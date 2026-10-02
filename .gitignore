@@ -1,0 +1,7 @@
+.vscode
+**/__pycache__
+.env
+checkpoints
+artifacts
+test.ipynb
+.agents

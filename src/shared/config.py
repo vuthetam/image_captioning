@@ -1,0 +1,123 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# ==========================================
+# 1. ROOT & ENVIRONMENT
+# ==========================================
+ROOT_PATH = Path(__file__).resolve().parent.parent.parent
+ROOT_DIR = ROOT_PATH
+ENV_PATH = ROOT_PATH / ".env"
+
+if ENV_PATH.exists():
+    # Thêm override=True để Python luôn đọc file .env mới nhất, bỏ qua cache của Terminal
+    load_dotenv(ENV_PATH, override=True)
+
+RUN_MODE = os.getenv("RUN_MODE", "baseline")  # 'baseline' hoặc 'rag'
+
+# ==========================================
+# 2. DATASET PATHS (Inputs)
+# ==========================================
+DATASET_COCO_PATH = Path(
+    os.getenv("DATASET_COCO_PATH", str(ROOT_PATH / "dataset" / "mscoco" / "dataset_coco.json"))
+)
+IMAGES_DIR = Path(
+    os.getenv("IMAGES_PATH", str(ROOT_PATH / "dataset" / "mscoco" / "images"))
+)
+
+# Helper to safely create directories, ignoring read-only errors (e.g. on Kaggle /kaggle/input)
+def safe_mkdir(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+# ==========================================
+# 3. ARTIFACTS PATHS (Intermediates & Outputs)
+# ==========================================
+ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", str(ROOT_PATH / "artifacts")))
+safe_mkdir(ARTIFACTS_DIR)
+
+VOCAB_PATH = ARTIFACTS_DIR / "vocab_v3.json"
+RUN_ARTIFACTS_DIR = ARTIFACTS_DIR / RUN_MODE
+safe_mkdir(RUN_ARTIFACTS_DIR)
+PREDICTIONS_PATH = RUN_ARTIFACTS_DIR / "predictions.json"
+METRICS_PATH = RUN_ARTIFACTS_DIR / "metrics.json"
+
+# Splits
+SPLITS_DIR = ARTIFACTS_DIR / "splits"
+safe_mkdir(SPLITS_DIR)
+TRAIN_DF_PATH = SPLITS_DIR / "train_df.parquet"
+VAL_DF_PATH = SPLITS_DIR / "val_df.parquet"
+TEST_DF_PATH = SPLITS_DIR / "test_df.parquet"
+
+# Knowledge Base (FAISS)
+KB_MODEL_ID = "openai/clip-vit-base-patch16"
+KB_DIR = ARTIFACTS_DIR / "kb"
+safe_mkdir(KB_DIR)
+KB_FAISS_INDEX_PATH = KB_DIR / "kb_text_index.faiss"
+KB_METADATA_PATH = KB_DIR / "kb_metadata.parquet"
+
+# RAG Contexts
+RAG_CONTEXTS_DIR = ARTIFACTS_DIR / "rag_contexts"
+safe_mkdir(RAG_CONTEXTS_DIR)
+TRAIN_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "train_rag_contexts.parquet"
+VAL_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "val_rag_contexts.parquet"
+TEST_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "test_rag_contexts.parquet"
+
+# Visual features
+VISUAL_FEATURES_DIR = Path(os.getenv("VISUAL_FEATURES_DIR", str(ARTIFACTS_DIR / "visual_features")))
+safe_mkdir(VISUAL_FEATURES_DIR)
+TRAIN_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "train_visual_features.h5"
+VAL_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "val_visual_features.h5"
+TEST_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "test_visual_features.h5"
+
+
+
+# ==========================================
+# 4. CHECKPOINT PATHS (Weights)
+# ==========================================
+# Nhờ thủ thuật copy sang Working Dir, ta chỉ cần 1 thư mục duy nhất để vừa Load vừa Save
+CHECKPOINTS_DIR = Path(os.getenv("CHECKPOINTS_DIR", str(ROOT_PATH / "checkpoints")))
+
+# Tự động chia nhánh Checkpoint theo RUN_MODE ('baseline' hoặc 'rag')
+RUN_CHECKPOINT_DIR = CHECKPOINTS_DIR / RUN_MODE
+safe_mkdir(RUN_CHECKPOINT_DIR)
+
+LAST_CHECKPOINT_PATH = RUN_CHECKPOINT_DIR / "last_checkpoint.pth"
+BEST_CHECKPOINT_PATH = RUN_CHECKPOINT_DIR / "best_checkpoint.pth"
+
+# ==========================================
+# 5. HYPERPARAMETERS
+# ==========================================
+# Model Architecture
+DMODEL = int(os.getenv("DMODEL", "512"))
+NHEADS = int(os.getenv("NHEADS", "8"))
+NLAYERS = int(os.getenv("NLAYERS", "4"))
+DROPOUT = float(os.getenv("DROPOUT", "0.1"))
+
+# Training
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
+NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "10"))
+LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
+WEIGHT_DECAY = float(os.getenv("WEIGHT_DECAY", "1e-4"))
+MAX_GRAD_NORM = float(os.getenv("MAX_GRAD_NORM", "1.0"))
+NUM_WORKERS = int(os.getenv("NUM_WORKERS", "4"))
+
+# Text & Retrieval Settings
+FREQ_THRESHOLD = int(os.getenv("FREQ_THRESHOLD", "5"))
+MAX_LENGTH = int(os.getenv("MAX_LENGTH", "40"))
+BEAM_SIZE = int(os.getenv("BEAM_SIZE", "5"))
+
+# RAG Context Encoder
+CTX_NLAYERS = int(os.getenv("CTX_NLAYERS", "2"))
+MAX_CTX_LENGTH = int(os.getenv("MAX_CTX_LENGTH", "80"))
+TOP_K_CAPTIONS = int(os.getenv("TOP_K_CAPTIONS", "4"))
+
+# RAG V2 Context Field Lengths
+MAX_CTX_LEN = int(os.getenv("MAX_CTX_LEN", "40"))   # Tokens của mỗi context
+MAX_OBJ_LEN = int(os.getenv("MAX_OBJ_LEN", "10"))   # Objects của mỗi context
+MAX_REL_LEN = int(os.getenv("MAX_REL_LEN", "10"))   # Relations của mỗi context
+
+# RAG V3 Settings
+MAX_RAG_LEN = int(os.getenv("MAX_RAG_LEN", "64"))
