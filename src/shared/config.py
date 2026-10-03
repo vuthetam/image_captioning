@@ -60,6 +60,8 @@ KB_DIR = ARTIFACTS_DIR / MODEL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
 KB_FAISS_INDEX_PATH = KB_DIR / "kb_text_index.faiss"
 KB_METADATA_PATH = KB_DIR / "kb_metadata.parquet"
+IMAGE_KB_FAISS_INDEX_PATH = KB_DIR / "kb_image_index.faiss"
+IMAGE_KB_METADATA_PATH = KB_DIR / "kb_image_metadata.parquet"
 
 # RAG Contexts
 RAG_CONTEXTS_DIR = ARTIFACTS_DIR / MODEL_SAFE_NAME / "rag_contexts"
