@@ -22,6 +22,7 @@ from src.shared.config import (
     IMAGE_KB_FAISS_INDEX_PATH,
     IMAGE_KB_METADATA_PATH
 )
+from src.shared.utils import extract_clip_features
 
 class ImageDataset(Dataset):
     def __init__(self, df, images_dir, processor):
@@ -105,12 +106,13 @@ def main():
             
             # Lấy image features
             if num_gpus > 1:
-                # Nếu chạy đa GPU, gọi qua wrapper DataParallel
-                image_features = extractor(pixel_values)
+                raw_output = extractor(pixel_values)
             else:
-                # Nếu chạy 1 GPU, gọi thẳng hàm gốc của mô hình
-                image_features = model.get_image_features(pixel_values=pixel_values)
+                raw_output = model.get_image_features(pixel_values=pixel_values)
             
+            # Xử lý tương thích mọi phiên bản transformers để rút ra Tensor vector
+            image_features = extract_clip_features(raw_output)
+
             # Chuẩn hóa (Normalize) vector để dùng Inner Product tính ra Cosine Similarity
             image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
             
