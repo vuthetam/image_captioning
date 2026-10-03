@@ -17,7 +17,7 @@ from src.shared.config import IMAGES_DIR, TEST_DF_PATH
 def main():
     df = pd.read_parquet(TEST_DF_PATH)
     
-    output_dir = Path(f"/home/tam/Downloads/images/{df.iloc[0]["filepath"]}")
+    output_dir = Path(f"/home/tam/Downloads/images/{df.iloc[0]['filepath']}")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Bắt đầu copy {len(df):,} ảnh sang thư mục {output_dir}...")

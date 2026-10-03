@@ -116,15 +116,19 @@ def main() -> None:
         )
 
         if accelerator.is_main_process:
-            save_checkpoint(
-                LAST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
-            )
-            if val_loss < best_val_loss:
+            # 1. Kiểm tra và cập nhật kỷ lục trước
+            is_best = val_loss < best_val_loss
+            if is_best:
                 best_val_loss = val_loss
                 save_checkpoint(
                     BEST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
                 )
-                
+                c
+            # 2. Lưu LAST checkpoint với kỷ lục ĐÃ CẬP NHẬT (nếu có)
+            save_checkpoint(
+                LAST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
+            )
+            
     accelerator.print("TRAINING COMPLETE V4!")
     
     # Ép Kaggle (Jupyter Notebook) kết thúc Kernel mạnh tay để tránh bị treo (zombie processes)

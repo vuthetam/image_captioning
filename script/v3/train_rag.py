@@ -152,19 +152,10 @@ def main():
         
         # Chỉ tiến trình chính (Main Process) mới được quyền lưu file
         if accelerator.is_main_process:
-            # Lưu Checkpoint mỗi Epoch (Bao gồm cả Trọng số, Trạng thái Optimizer và Loss)
-            save_checkpoint(
-                path=LAST_CHECKPOINT_PATH,
-                model=model,
-                optimizer=optimizer,
-                epoch=epoch,
-                train_loss=train_loss,
-                best_val_loss=best_val_loss,
-                accelerator=accelerator
-            )
+            is_best = val_loss < best_val_loss
             
-            # Cập nhật Best Checkpoint
-            if val_loss < best_val_loss:
+            # Cập nhật Best Checkpoint trước
+            if is_best:
                 best_val_loss = val_loss
                 save_checkpoint(
                     path=BEST_CHECKPOINT_PATH,
@@ -176,6 +167,17 @@ def main():
                     accelerator=accelerator
                 )
                 accelerator.print(f" 🏆 New Best Checkpoint Saved: {BEST_CHECKPOINT_PATH}")
+                
+            # Sau đó mới lưu Last Checkpoint với kỷ lục đã cập nhật
+            save_checkpoint(
+                path=LAST_CHECKPOINT_PATH,
+                model=model,
+                optimizer=optimizer,
+                epoch=epoch,
+                train_loss=train_loss,
+                best_val_loss=best_val_loss,
+                accelerator=accelerator
+            )
 
     accelerator.print("\n🎉 TRAINING COMPLETE! 🎉")
     accelerator.wait_for_everyone()

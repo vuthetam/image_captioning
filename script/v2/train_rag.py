@@ -154,16 +154,18 @@ def main() -> None:
         )
 
         if accelerator.is_main_process:
-            save_checkpoint(
-                LAST_CHECKPOINT_PATH, model, optimizer,
-                epoch + 1, train_loss, best_val_loss, accelerator,
-            )
-            if val_loss < best_val_loss:
+            is_best = val_loss < best_val_loss
+            if is_best:
                 best_val_loss = val_loss
                 save_checkpoint(
                     BEST_CHECKPOINT_PATH, model, optimizer,
                     epoch + 1, train_loss, best_val_loss, accelerator,
                 )
+                
+            save_checkpoint(
+                LAST_CHECKPOINT_PATH, model, optimizer,
+                epoch + 1, train_loss, best_val_loss, accelerator,
+            )
 
     accelerator.wait_for_everyone()
     accelerator.end_training()
