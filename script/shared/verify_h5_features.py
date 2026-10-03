@@ -19,7 +19,7 @@ from src.shared.config import (
     TRAIN_VISUAL_FEATURES_PATH, VAL_VISUAL_FEATURES_PATH, TEST_VISUAL_FEATURES_PATH,
     IMAGES_DIR
 )
-from src.shared.encoder import CLIPViTB16Encoder, create_clip_transform
+from src.shared.encoder import CLIPVisualEncoder, create_clip_transform
 
 class ImageFeatureDataset(Dataset):
     def __init__(self, df, images_path, transform):
@@ -47,7 +47,7 @@ def verify_h5_batched(df_path, h5_path, batch_size=256, max_images=None):
     print(f"Đang dùng thiết bị: {device} với {num_gpus} GPUs")
 
     # 1. Khởi tạo model và transform
-    encoder = CLIPViTB16Encoder().eval().to(device)
+    encoder = CLIPVisualEncoder().eval().to(device)
     if num_gpus > 1:
         encoder = nn.DataParallel(encoder)
     transform = create_clip_transform()

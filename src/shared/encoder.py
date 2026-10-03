@@ -2,10 +2,12 @@ import torch
 from torch import Tensor, nn
 from transformers import CLIPVisionModel
 
-class CLIPViTB16Encoder(nn.Module):
+from src.shared.config import VISUAL_ENCODER_MODEL
+
+class CLIPVisualEncoder(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        clip_model = CLIPVisionModel.from_pretrained("openai/clip-vit-base-patch16")
+        clip_model = CLIPVisionModel.from_pretrained(VISUAL_ENCODER_MODEL)
 
         # Support both plain CLIPVisionModel and wrappers that expose .vision_model.
         self.backbone = getattr(clip_model, "vision_model", clip_model)

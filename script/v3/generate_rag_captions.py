@@ -1,5 +1,5 @@
 """Generate captions cho tập Test bằng RagModelV3 + pre-extracted CLIP features."""
-
+import os
 import json
 import sys
 from pathlib import Path
@@ -74,6 +74,7 @@ def main() -> None:
         max_length=MAX_LENGTH,
         max_rag_len=MAX_RAG_LEN,
         top_k=TOP_K_CAPTIONS,
+        pad_idx=vocab.pad_idx(),
     )
 
     if not BEST_CHECKPOINT_PATH.is_file():
@@ -104,6 +105,9 @@ def main() -> None:
 
     accelerator.wait_for_everyone()
     accelerator.end_training()
+
+    if accelerator.is_main_process:
+        os._exit(0)
 
 if __name__ == "__main__":
     main()

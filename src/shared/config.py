@@ -52,21 +52,24 @@ VAL_DF_PATH = SPLITS_DIR / "val_df.parquet"
 TEST_DF_PATH = SPLITS_DIR / "test_df.parquet"
 
 # Knowledge Base (FAISS)
-KB_MODEL_ID = "openai/clip-vit-base-patch16"
-KB_DIR = ARTIFACTS_DIR / "kb"
+VISUAL_ENCODER_MODEL = os.getenv("VISUAL_ENCODER_MODEL", "openai/clip-vit-base-patch16")
+KB_MODEL_ID = VISUAL_ENCODER_MODEL
+MODEL_SAFE_NAME = VISUAL_ENCODER_MODEL.replace("/", "-")
+
+KB_DIR = ARTIFACTS_DIR / MODEL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
 KB_FAISS_INDEX_PATH = KB_DIR / "kb_text_index.faiss"
 KB_METADATA_PATH = KB_DIR / "kb_metadata.parquet"
 
 # RAG Contexts
-RAG_CONTEXTS_DIR = ARTIFACTS_DIR / "rag_contexts"
+RAG_CONTEXTS_DIR = ARTIFACTS_DIR / MODEL_SAFE_NAME / "rag_contexts"
 safe_mkdir(RAG_CONTEXTS_DIR)
 TRAIN_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "train_rag_contexts.parquet"
 VAL_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "val_rag_contexts.parquet"
 TEST_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "test_rag_contexts.parquet"
 
 # Visual features
-VISUAL_FEATURES_DIR = Path(os.getenv("VISUAL_FEATURES_DIR", str(ARTIFACTS_DIR / "visual_features")))
+VISUAL_FEATURES_DIR = Path(os.getenv("VISUAL_FEATURES_DIR", str(ARTIFACTS_DIR / MODEL_SAFE_NAME / "visual_features")))
 safe_mkdir(VISUAL_FEATURES_DIR)
 TRAIN_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "train_visual_features.h5"
 VAL_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "val_visual_features.h5"

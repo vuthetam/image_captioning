@@ -20,7 +20,7 @@ from src.shared.config import (
     TRAIN_VISUAL_FEATURES_PATH, VAL_VISUAL_FEATURES_PATH, TEST_VISUAL_FEATURES_PATH,
     IMAGES_DIR,
 )
-from src.shared.encoder import CLIPViTB16Encoder, create_clip_transform
+from src.shared.encoder import CLIPVisualEncoder, create_clip_transform
 
 class ImageFeatureDataset(Dataset):
     def __init__(self, df, images_path, transform):
@@ -95,10 +95,10 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_gpus = torch.cuda.device_count()
     
-    print(f"Khởi động môi trường (Sử dụng {num_gpus} GPUs trên {device})")
-    print("Đang tải CLIPViTB16Encoder...")
+    print("Khởi động môi trường...")
+    print("Đang tải CLIPVisualEncoder...")
         
-    encoder = CLIPViTB16Encoder()
+    encoder = CLIPVisualEncoder()
     encoder.eval()
     encoder.to(device)
     

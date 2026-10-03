@@ -1,5 +1,5 @@
 from torch import Tensor, nn
-from src.shared.encoder import CLIPViTB16Encoder
+from src.shared.encoder import CLIPVisualEncoder
 from src.shared.decoder import TransformerCaptionDecoder
 from src.v1.visual_projector import VisualProjector
 
@@ -22,7 +22,7 @@ class BaselineCaptioner(nn.Module):
             self.encoder = None
             encoder_output_dim = visual_feature_dim
         else:
-            self.encoder = CLIPViTB16Encoder()
+            self.encoder = CLIPVisualEncoder()
             encoder_output_dim = self.encoder.output_dim
 
         self.visual_projector = VisualProjector(encoder_output_dim, d_model)

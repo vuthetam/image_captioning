@@ -180,7 +180,9 @@ def main():
     accelerator.print("\n🎉 TRAINING COMPLETE! 🎉")
     accelerator.wait_for_everyone()
     accelerator.end_training()
-
+    
+    if accelerator.is_main_process:
+        os._exit(0)
 
 if __name__ == "__main__":
     main()
