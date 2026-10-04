@@ -41,7 +41,7 @@ from src.shared.vocabulary import Vocabulary
 
 
 def main() -> None:
-    accelerator = Accelerator(mixed_precision="fp16")
+    accelerator = Accelerator()
     set_seed(42)
 
     train_df = pd.read_parquet(TRAIN_DF_PATH)
@@ -123,7 +123,7 @@ def main() -> None:
                 save_checkpoint(
                     BEST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
                 )
-                c
+                
             # 2. Lưu LAST checkpoint với kỷ lục ĐÃ CẬP NHẬT (nếu có)
             save_checkpoint(
                 LAST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
