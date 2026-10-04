@@ -70,18 +70,14 @@ def main():
     if num_gpus > 1:
         extractor = torch.nn.DataParallel(extractor)
 
-    # 2. Đọc tập Train và Val, gộp lại và loại bỏ trùng lặp imgid
-    print("Đọc tập train_df và val_df...")
+    # 2. Đọc tập Train và loại bỏ trùng lặp imgid
+    print("Đọc tập train_df để xây dựng KB...")
     train_df = pd.read_parquet(TRAIN_DF_PATH)
-    val_df = pd.read_parquet(VAL_DF_PATH)
-    
-    # Gộp chung lại
-    combined_df = pd.concat([train_df, val_df], ignore_index=True)
     
     # Drop duplicate imgid
-    print(f"Tổng số hàng trước khi loại trùng lặp: {len(combined_df):,}")
-    combined_df = combined_df.drop_duplicates(subset=['imgid']).reset_index(drop=True)
-    print(f"Tổng số ảnh (imgid) độc lập cần mã hóa: {len(combined_df):,}")
+    print(f"Tổng số hàng trước khi loại trùng lặp: {len(train_df):,}")
+    combined_df = train_df.drop_duplicates(subset=['imgid']).reset_index(drop=True)
+    print(f"Tổng số ảnh (imgid) độc lập cần mã hóa (Train only): {len(combined_df):,}")
     
     # Chỉ giữ lại metadata tối giản
     metadata_df = combined_df[['imgid', 'filepath', 'filename']].copy()
