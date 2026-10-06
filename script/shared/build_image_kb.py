@@ -109,11 +109,14 @@ def main():
             # Xử lý tương thích mọi phiên bản transformers để rút ra Tensor vector
             image_features = extract_clip_features(raw_output)
 
-            # Chuẩn hóa (Normalize) vector để dùng Inner Product tính ra Cosine Similarity
-            image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
+            # Ép kiểu sang float32 TRƯỚC KHI chuẩn hóa (để tránh lỗi vượt quá giới hạn của float16 gây NaN)
+            image_features = image_features.to(torch.float32)
             
-            # Chuyển về numpy float32 và nạp vào FAISS
-            embeddings_np = image_features.cpu().numpy().astype('float32')
+            # Chuẩn hóa (Normalize) vector để dùng Inner Product tính ra Cosine Similarity
+            image_features = torch.nn.functional.normalize(image_features, p=2, dim=-1)
+            
+            # Chuyển về numpy và nạp vào FAISS
+            embeddings_np = image_features.cpu().numpy()
             index.add(embeddings_np)
 
     # 5. Lưu file xuống ổ cứng

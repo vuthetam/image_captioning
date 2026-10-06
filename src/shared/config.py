@@ -126,3 +126,8 @@ MAX_REL_LEN = int(os.getenv("MAX_REL_LEN", "10"))   # Relations của mỗi cont
 
 # RAG V3 Settings
 MAX_RAG_LEN = int(os.getenv("MAX_RAG_LEN", "64"))
+# V4 Image-to-Image RAG Settings
+TRAIN_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "train_rag_tensors.h5"
+VAL_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "val_rag_tensors.h5"
+TEST_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "test_rag_tensors.h5"
+TOP_K_RAG_IMAGES = int(os.getenv("TOP_K_RAG_IMAGES", "4"))
