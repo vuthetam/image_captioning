@@ -9,13 +9,15 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm.auto import tqdm
 import h5py
 
-from src.shared.encoder import CLIPImageEmbeddingEncoder
-
 # Đảm bảo import được src
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.shared.encoder import CLIPImageEmbeddingEncoder
+
+
+# Đảm bảo import được src
 from src.shared.config import (
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
     TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
