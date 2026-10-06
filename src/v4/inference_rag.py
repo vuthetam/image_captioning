@@ -31,7 +31,7 @@ def generate_captions_rag_v4(
     base_model = accelerator.unwrap_model(model)
 
     all_captions: dict[int, list[str]] = {}
-    iterator = tqdm(dataloader, disable=not show_progress, leave=False, desc="Generating V4 RAG")
+    iterator = tqdm(dataloader, disable=not show_progress, leave=True, desc="Generating V4 RAG")
 
     for batch in iterator:
         visual_inputs, rag_inputs, image_ids = batch
@@ -41,7 +41,6 @@ def generate_captions_rag_v4(
         image_ids = image_ids.to(accelerator.device)
 
         with accelerator.autocast():
-            # Sử dụng hàm encode_memory mới viết để trích xuất fused_memory
             memory = base_model.encode_memory(visual_inputs, rag_inputs, include_cls_token)
             
             mem_mask = None

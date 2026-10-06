@@ -3,8 +3,6 @@ import sys
 import os
 from pathlib import Path
 
-os.environ["RUN_MODE"] = "v4_rag"
-
 import pandas as pd
 from accelerate import Accelerator
 from accelerate.utils import set_seed
