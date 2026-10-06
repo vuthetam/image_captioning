@@ -13,30 +13,7 @@ from src.shared.vocabulary import Vocabulary
 # Internal: HDF5 feature reader 
 # ---------------------------------------------------------------------------
 
-class _H5FeatureStore:
-    """Đọc CLIP features từ file HDF5 theo imgid."""
-
-    def __init__(self, features_path: str | Path) -> None:
-        self.features_path = Path(features_path)
-        with h5py.File(self.features_path, "r") as f:
-            stored_imgids = np.asarray(f["imgids"], dtype=np.int64)
-            self.feature_shape = tuple(f["features"].shape[1:])
-        self._imgid_to_index = {
-            int(imgid): idx for idx, imgid in enumerate(stored_imgids.tolist())
-        }
-        self._h5_file: h5py.File | None = None
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state["_h5_file"] = None
-        return state
-
-    def _feature_for_imgid(self, imgid: int) -> torch.Tensor:
-        if self._h5_file is None:
-            self._h5_file = h5py.File(self.features_path, "r")
-        idx = self._imgid_to_index[int(imgid)]
-        feature = np.asarray(self._h5_file["features"][idx])
-        return torch.from_numpy(feature)
+from src.shared.dataset import H5FeatureStore
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +42,7 @@ def _encode_ctx_field(field_list, vocab: Vocabulary, max_len: int, top_k: int) -
 # Dataset dùng cho Train / Val
 # ---------------------------------------------------------------------------
 
-class RagV2CaptionDataset(_H5FeatureStore, Dataset):
+class RagV2CaptionDataset(H5FeatureStore, Dataset):
     """Dataset V2 cho Train/Val: trả về visual features, caption tokens và RAG contexts.
 
     Trả về:
@@ -89,7 +66,7 @@ class RagV2CaptionDataset(_H5FeatureStore, Dataset):
         max_obj_len: int = 10,
         max_rel_len: int = 10,
     ) -> None:
-        _H5FeatureStore.__init__(self, features_path)
+        H5FeatureStore.__init__(self, features_path)
         self.df = df.reset_index(drop=True)
         self.vocab = vocab
         self.max_length = max_length
@@ -109,7 +86,7 @@ class RagV2CaptionDataset(_H5FeatureStore, Dataset):
         imgid = int(row["imgid"])
 
         # Visual features
-        visual_feature = self._feature_for_imgid(imgid)
+        visual_feature = self.get_feature(imgid)
 
         # Caption tokens (GT)
         input_ids, attention_mask = self.vocab.encode_from_tokens(
@@ -131,7 +108,7 @@ class RagV2CaptionDataset(_H5FeatureStore, Dataset):
 # Dataset dùng cho Inference / Test (sinh caption)
 # ---------------------------------------------------------------------------
 
-class RagV2InferenceDataset(_H5FeatureStore, Dataset):
+class RagV2InferenceDataset(H5FeatureStore, Dataset):
     """Dataset V2 cho Inference/Test: trả về visual features và RAG contexts (không có GT caption).
 
     Trả về:
@@ -153,7 +130,7 @@ class RagV2InferenceDataset(_H5FeatureStore, Dataset):
         max_obj_len: int = 10,
         max_rel_len: int = 10,
     ) -> None:
-        _H5FeatureStore.__init__(self, features_path)
+        H5FeatureStore.__init__(self, features_path)
         self.df = df.reset_index(drop=True)
         self.vocab = vocab
         self.top_k = top_k
@@ -171,7 +148,7 @@ class RagV2InferenceDataset(_H5FeatureStore, Dataset):
         row = self.df.iloc[idx]
         imgid = int(row["imgid"])
 
-        visual_feature = self._feature_for_imgid(imgid)
+        visual_feature = self.get_feature(imgid)
 
         ctx = self._rag_lookup.get(imgid, {})
         k_ctx_tokens    = _encode_ctx_field(ctx.get("tokens",    []), self.vocab, self.max_ctx_len, self.top_k)

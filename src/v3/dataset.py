@@ -10,31 +10,7 @@ from src.shared.vocabulary import Vocabulary
 # ==========================================
 # 1. Base Classes (Self-contained for V3)
 # ==========================================
-class _H5FeatureStoreV3:
-    '''Lazily reads CLIP features from HDF5 format to avoid multi-processing issues.'''
-    def __init__(self, features_path: str | Path) -> None:
-        self.features_path = Path(features_path)
-        self._h5_file = None
-        with h5py.File(self.features_path, "r") as h5_file:
-            stored_imgids = np.asarray(h5_file["imgids"], dtype=np.int64)
-            self.feature_shape = tuple(h5_file["features"].shape[1:])
-
-        self._imgid_to_index = {
-            int(imgid): index for index, imgid in enumerate(stored_imgids.tolist())
-        }
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state["_h5_file"] = None
-        return state
-
-    def _feature_for_imgid(self, imgid: int) -> torch.Tensor:
-        imgid = int(imgid)
-        if self._h5_file is None:
-            self._h5_file = h5py.File(self.features_path, "r")
-        feature_index = self._imgid_to_index[imgid]
-        feature = np.asarray(self._h5_file["features"][feature_index])
-        return torch.from_numpy(feature)
+from src.shared.dataset import H5FeatureStore
 
 
 # ==========================================
@@ -92,13 +68,13 @@ def encode_rag_prompts_v3(
 # ==========================================
 # 3. Main Datasets V3
 # ==========================================
-class RAGFeatureCaptionDatasetV3(_H5FeatureStoreV3, Dataset):
+class RAGFeatureCaptionDatasetV3(H5FeatureStore, Dataset):
     '''Dataset dùng cho lúc Huấn Luyện (Training) - trả về Tuple giống V1/V2'''
     def __init__(self, df, vocab: Vocabulary, features_path, rag_contexts_path, max_length, max_rag_len, top_k):
         self.df = df.reset_index(drop=True)
         self.vocab = vocab
         self.max_length = max_length
-        _H5FeatureStoreV3.__init__(self, features_path)
+        H5FeatureStore.__init__(self, features_path)
         
         self.rag_df = pd.read_parquet(rag_contexts_path)
         self._rag_lookup = {}
@@ -120,7 +96,7 @@ class RAGFeatureCaptionDatasetV3(_H5FeatureStoreV3, Dataset):
         row = self.df.iloc[idx]
         imgid = int(row["imgid"])
         
-        visual_feature = self._feature_for_imgid(imgid)
+        visual_feature = self.get_feature(imgid)
         
         input_ids, attention_mask = self.vocab.encode_from_tokens(row["tokens"], self.max_length)
         input_ids = torch.tensor(input_ids, dtype=torch.long)
@@ -134,11 +110,11 @@ class RAGFeatureCaptionDatasetV3(_H5FeatureStoreV3, Dataset):
         return visual_feature, input_ids, attention_mask, rag_input_ids, rag_attention_mask
 
 
-class RAGFeatureDatasetV3(_H5FeatureStoreV3, Dataset):
+class RAGFeatureDatasetV3(H5FeatureStore, Dataset):
     '''Dataset dùng cho lúc Sinh Câu (Inference) - trả về Tuple giống V1/V2'''
     def __init__(self, df, features_path, rag_contexts_path, vocab: Vocabulary, max_rag_len, top_k):
         self.df = df.reset_index(drop=True)
-        _H5FeatureStoreV3.__init__(self, features_path)
+        H5FeatureStore.__init__(self, features_path)
         
         self.rag_df = pd.read_parquet(rag_contexts_path)
         self._rag_lookup = {}
@@ -161,7 +137,7 @@ class RAGFeatureDatasetV3(_H5FeatureStoreV3, Dataset):
         row = self.df.iloc[idx]
         imgid = int(row["imgid"])
         
-        visual_feature = self._feature_for_imgid(imgid)
+        visual_feature = self.get_feature(imgid)
         
         captions, objects, relations = self._rag_lookup.get(imgid, ([], [], []))
         rag_input_ids, rag_attention_mask = encode_rag_prompts_v3(

@@ -2,6 +2,8 @@ import torch
 from torch.utils.data import Dataset
 from PIL import Image
 from pathlib import Path
+import h5py
+import numpy as np
 
 class RawImageDataset(Dataset):
     """
@@ -36,3 +38,30 @@ class RawImageDataset(Dataset):
                 
             return pixel_values, self.imgids[idx]
 
+
+class H5FeatureStore:
+    """Lazily reads features from the project's row-aligned HDF5 format."""
+
+    def __init__(self, features_path: str | Path) -> None:
+        self.features_path = Path(features_path)
+        self._h5_file: h5py.File | None = None
+        with h5py.File(self.features_path, "r") as h5_file:
+            stored_imgids = np.asarray(h5_file["imgids"], dtype=np.int64)
+            self.feature_shape = tuple(h5_file["features"].shape[1:])
+
+        self._imgid_to_index = {
+            int(imgid): index for index, imgid in enumerate(stored_imgids.tolist())
+        }
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_h5_file"] = None
+        return state
+
+    def get_feature(self, imgid: int) -> torch.Tensor:
+        imgid = int(imgid)
+        if self._h5_file is None:
+            self._h5_file = h5py.File(self.features_path, "r")
+        feature_index = self._imgid_to_index[imgid]
+        feature = np.asarray(self._h5_file["features"][feature_index])
+        return torch.from_numpy(feature)
