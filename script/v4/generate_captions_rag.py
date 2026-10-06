@@ -1,9 +1,9 @@
-"""Generate test captions using V4 Baseline model from pre-extracted CLIP visual-token HDF5 files."""
-
 import json
 import sys
 import os
 from pathlib import Path
+
+os.environ["RUN_MODE"] = "v4_rag"
 
 import pandas as pd
 from accelerate import Accelerator
@@ -28,11 +28,12 @@ from src.shared.config import (
     PREDICTIONS_PATH,
     TEST_DF_PATH,
     TEST_VISUAL_FEATURES_PATH,
+    TEST_RAG_TENSORS_PATH,
     VOCAB_PATH,
 )
-from src.v4.dataset import FeatureDatasetV4
-from src.v4.inference import generate_captions_v4
-from src.v4.models.baseline import BaselineCaptionerV4
+from src.v4.dataset import FeatureDatasetV4_RAG
+from src.v4.inference_rag import generate_captions_rag_v4
+from src.v4.models.rag import RagCaptionerV4
 from src.shared.vocabulary import Vocabulary
 
 
@@ -41,7 +42,13 @@ def main() -> None:
     set_seed(42)
     test_df = pd.read_parquet(TEST_DF_PATH)
     vocab = Vocabulary.load(VOCAB_PATH)
-    test_dataset = FeatureDatasetV4(test_df, TEST_VISUAL_FEATURES_PATH)
+    
+    test_dataset = FeatureDatasetV4_RAG(
+        df=test_df, 
+        features_path=TEST_VISUAL_FEATURES_PATH,
+        rag_tensors_path=TEST_RAG_TENSORS_PATH
+    )
+    
     test_loader = DataLoader(
         test_dataset,
         batch_size=BATCH_SIZE,
@@ -50,7 +57,7 @@ def main() -> None:
         pin_memory=True,
     )
 
-    model = BaselineCaptionerV4(
+    model = RagCaptionerV4(
         vocab_size=len(vocab),
         d_model=DMODEL,
         nheads=NHEADS,
@@ -62,10 +69,11 @@ def main() -> None:
     )
     if not BEST_CHECKPOINT_PATH.is_file():
         raise FileNotFoundError(f"Không tìm thấy checkpoint: {BEST_CHECKPOINT_PATH}")
+        
     load_checkpoint(BEST_CHECKPOINT_PATH, model, device=accelerator.device)
 
     model, test_loader = accelerator.prepare(model, test_loader)
-    caption_dict = generate_captions_v4(
+    caption_dict = generate_captions_rag_v4(
         model, test_loader, vocab, BEAM_SIZE, MAX_LENGTH, accelerator, show_progress=True, include_cls_token=False
     )
 

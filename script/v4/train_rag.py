@@ -2,6 +2,7 @@ import sys
 import os
 from pathlib import Path
 
+
 import pandas as pd
 import torch
 from accelerate import Accelerator
@@ -28,14 +29,17 @@ from src.shared.config import (
     NUM_WORKERS,
     TRAIN_DF_PATH,
     TRAIN_VISUAL_FEATURES_PATH,
+    TRAIN_RAG_TENSORS_PATH,
     VAL_DF_PATH,
     VAL_VISUAL_FEATURES_PATH,
+    VAL_RAG_TENSORS_PATH,
     VOCAB_PATH,
     WEIGHT_DECAY,
+    TOP_K_RAG_IMAGES,
 )
-from src.v4.dataset import FeatureCaptionDatasetV4
-from src.v4.engine import evaluate_one_epoch_v4, train_one_epoch_v4
-from src.v4.models.baseline import BaselineCaptionerV4
+from src.v4.dataset import FeatureCaptionDatasetV4_RAG
+from src.v4.engine_rag import evaluate_one_epoch_rag_v4, train_one_epoch_rag_v4
+from src.v4.models.rag import RagCaptionerV4
 from src.shared.utils import trainable_parameters
 from src.shared.vocabulary import Vocabulary
 
@@ -48,11 +52,19 @@ def main() -> None:
     val_df = pd.read_parquet(VAL_DF_PATH)
     vocab = Vocabulary.load(VOCAB_PATH)
 
-    train_dataset = FeatureCaptionDatasetV4(
-        train_df, vocab, TRAIN_VISUAL_FEATURES_PATH, max_length=MAX_LENGTH
+    train_dataset = FeatureCaptionDatasetV4_RAG(
+        df=train_df,
+        vocab=vocab,
+        features_path=TRAIN_VISUAL_FEATURES_PATH,
+        rag_tensors_path=TRAIN_RAG_TENSORS_PATH,
+        max_length=MAX_LENGTH
     )
-    val_dataset = FeatureCaptionDatasetV4(
-        val_df, vocab, VAL_VISUAL_FEATURES_PATH, max_length=MAX_LENGTH
+    val_dataset = FeatureCaptionDatasetV4_RAG(
+        df=val_df,
+        vocab=vocab,
+        features_path=VAL_VISUAL_FEATURES_PATH,
+        rag_tensors_path=VAL_RAG_TENSORS_PATH,
+        max_length=MAX_LENGTH
     )
 
     train_loader = DataLoader(
@@ -71,7 +83,7 @@ def main() -> None:
         pin_memory=True,
     )
 
-    model = BaselineCaptionerV4(
+    model = RagCaptionerV4(
         vocab_size=len(vocab),
         d_model=DMODEL,
         nheads=NHEADS,
@@ -105,10 +117,10 @@ def main() -> None:
     )
 
     for epoch in range(start_epoch, NUM_EPOCHS):
-        train_loss = train_one_epoch_v4(
+        train_loss = train_one_epoch_rag_v4(
             model, train_loader, optimizer, vocab.pad_idx(), accelerator, MAX_GRAD_NORM, True
         )
-        val_loss = evaluate_one_epoch_v4(model, val_loader, vocab.pad_idx(), accelerator, True)
+        val_loss = evaluate_one_epoch_rag_v4(model, val_loader, vocab.pad_idx(), accelerator, True)
         
         accelerator.print(
             f"[Epoch {epoch + 1:02d}/{NUM_EPOCHS}] "
@@ -116,7 +128,6 @@ def main() -> None:
         )
 
         if accelerator.is_main_process:
-            # 1. Kiểm tra và cập nhật kỷ lục trước
             is_best = val_loss < best_val_loss
             if is_best:
                 best_val_loss = val_loss
@@ -124,18 +135,15 @@ def main() -> None:
                     BEST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
                 )
                 
-            # 2. Lưu LAST checkpoint với kỷ lục ĐÃ CẬP NHẬT (nếu có)
             save_checkpoint(
                 LAST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
             )
             
-    accelerator.print("TRAINING COMPLETE V4!")
+    accelerator.print("TRAINING COMPLETE V4 RAG!")
     
-    # Ép Kaggle (Jupyter Notebook) kết thúc Kernel mạnh tay để tránh bị treo (zombie processes)
     accelerator.wait_for_everyone()
     sys.stdout.flush()
     os._exit(0)
 
 if __name__ == "__main__":
     main()
-

@@ -5,9 +5,10 @@ from torch import nn
 from tqdm.auto import tqdm
 from src.shared.utils import trainable_parameters
 
-def _step_v4(
+def _step_rag_v4(
     model: nn.Module,
     visual_inputs: torch.Tensor,
+    rag_inputs: torch.Tensor,
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     pad_idx: int,
@@ -15,8 +16,12 @@ def _step_v4(
     # Target shift left by 1
     target_ids = input_ids[:, 1:]
     
-    # Không lưu logits để tránh Memory Leak
-    logits = model(visual_inputs, input_ids, attention_mask)
+    logits = model(
+        visual_inputs=visual_inputs,
+        rag_inputs=rag_inputs,
+        input_ids=input_ids,
+        attention_mask=attention_mask
+    )
 
     loss_sum = nn.functional.cross_entropy(
         logits.reshape(-1, logits.size(-1)),
@@ -29,7 +34,7 @@ def _step_v4(
     return loss_sum, num_tokens
 
 
-def train_one_epoch_v4(
+def train_one_epoch_rag_v4(
     model: nn.Module,
     dataloader: Iterable,
     optimizer: torch.optim.Optimizer,
@@ -42,18 +47,19 @@ def train_one_epoch_v4(
 
     total_loss = 0.0
     total_tokens = 0
-    iterator = tqdm(dataloader, disable=not show_progress, leave=True, desc="Training V4")
+    iterator = tqdm(dataloader, disable=not show_progress, leave=True, desc="Training V4 RAG")
 
     for batch in iterator:
-        visual_inputs, input_ids, attention_mask = batch
+        visual_inputs, rag_inputs, input_ids, attention_mask = batch
 
         visual_inputs = visual_inputs.to(accelerator.device)
+        rag_inputs = rag_inputs.to(accelerator.device)
         input_ids = input_ids.to(accelerator.device)
         attention_mask = attention_mask.to(accelerator.device)
 
         optimizer.zero_grad(set_to_none=True)
         with accelerator.autocast():
-            loss_sum, num_tokens = _step_v4(model, visual_inputs, input_ids, attention_mask, pad_idx)
+            loss_sum, num_tokens = _step_rag_v4(model, visual_inputs, rag_inputs, input_ids, attention_mask, pad_idx)
 
         # -------------------------------------------------------------
         # V4 FIX: Chuẩn hóa DDP Loss (Chống lệch Gradient & Normalize)
@@ -85,7 +91,7 @@ def train_one_epoch_v4(
 
 
 @torch.no_grad()
-def evaluate_one_epoch_v4(
+def evaluate_one_epoch_rag_v4(
     model: nn.Module,
     dataloader: Iterable,
     pad_idx: int,
@@ -96,17 +102,18 @@ def evaluate_one_epoch_v4(
 
     total_loss = 0.0
     total_tokens = 0
-    iterator = tqdm(dataloader, disable=not show_progress, leave=True, desc="Evaluating V4")
+    iterator = tqdm(dataloader, disable=not show_progress, leave=True, desc="Evaluating V4 RAG")
 
     for batch in iterator:
-        visual_inputs, input_ids, attention_mask = batch
+        visual_inputs, rag_inputs, input_ids, attention_mask = batch
 
         visual_inputs = visual_inputs.to(accelerator.device)
+        rag_inputs = rag_inputs.to(accelerator.device)
         input_ids = input_ids.to(accelerator.device)
         attention_mask = attention_mask.to(accelerator.device)
 
         with accelerator.autocast():
-            loss_sum, num_tokens = _step_v4(model, visual_inputs, input_ids, attention_mask, pad_idx)
+            loss_sum, num_tokens = _step_rag_v4(model, visual_inputs, rag_inputs, input_ids, attention_mask, pad_idx)
 
         reduced_loss = accelerator.reduce(loss_sum.detach(), reduction="sum")
         global_tokens = accelerator.reduce(num_tokens.detach(), reduction="sum")
