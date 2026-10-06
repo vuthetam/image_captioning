@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.shared.config import (
     TRAIN_DF_PATH,
-    KB_MODEL_ID,
+    RETRIEVAL_ENCODER_MODEL ,
     IMAGES_DIR,
     IMAGE_KB_FAISS_INDEX_PATH,
     IMAGE_KB_METADATA_PATH
@@ -30,13 +30,13 @@ def main():
     num_gpus = torch.cuda.device_count()
     
     # 1. Load CLIP Model
-    print(f"Loading CLIP model ({KB_MODEL_ID})...")
+    print(f"Loading CLIP model ({RETRIEVAL_ENCODER_MODEL })...")
     model_kwargs = {"torch_dtype": torch.float16} if device == "cuda" else {}
     extractor = CLIPImageEmbeddingEncoder(**model_kwargs).eval().to(device)
     if num_gpus > 1:
         extractor = torch.nn.DataParallel(extractor)
     
-    processor = CLIPProcessor.from_pretrained(KB_MODEL_ID)
+    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
 
     # 2. Đọc tập Train và loại bỏ trùng lặp imgid
     print("Đọc tập train_df để xây dựng KB...")

@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 import h5py
 
@@ -22,13 +22,13 @@ from src.shared.config import (
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
     TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
     IMAGES_DIR,
-    KB_MODEL_ID,
+    RETRIEVAL_ENCODER_MODEL ,
     NUM_WORKERS
 )
 from transformers import CLIPProcessor
 from src.shared.dataset import RawImageDataset
 
-def process_and_save(df_path, output_h5_path, model, processor, device, batch_size=256):
+def process_and_save(df_path, output_h5_path, model, processor, device, batch_size=64):
     print(f"\nĐang xử lý {df_path.name}...")
         
     df = pd.read_parquet(df_path)
@@ -42,6 +42,7 @@ def process_and_save(df_path, output_h5_path, model, processor, device, batch_si
         h5f.create_dataset("imgids", data=df_unique["imgid"].to_numpy(dtype="int64"))
         h5f.attrs["feature_layout"] = "features[i] belongs to imgids[i]"
         h5f.attrs["chunk_rows"] = 1
+        h5f.attrs["model_id"] = RETRIEVAL_ENCODER_MODEL 
 
         feature_store = None
         current_idx = 0
@@ -89,7 +90,7 @@ def main():
     num_gpus = torch.cuda.device_count()
     
     print("Khởi động môi trường...")
-    print(f"Đang tải CLIPImageEmbeddingEncoder ({KB_MODEL_ID})...")
+    print(f"Đang tải CLIPImageEmbeddingEncoder ({RETRIEVAL_ENCODER_MODEL })...")
         
     model_kwargs = {"torch_dtype": torch.float16} if device.type == "cuda" else {}
     model = CLIPImageEmbeddingEncoder(**model_kwargs).eval().to(device)
@@ -97,7 +98,7 @@ def main():
     if num_gpus > 1:
         model = nn.DataParallel(model)
     
-    processor = CLIPProcessor.from_pretrained(KB_MODEL_ID)
+    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
     
     datasets = [
         (TRAIN_DF_PATH, TRAIN_IMAGE_EMBEDDINGS_PATH),
@@ -113,7 +114,7 @@ def main():
                 model,
                 processor,
                 device,
-                batch_size=256,
+                batch_size=64,
             )
         else:
             print(f"Cảnh báo: Không tìm thấy {df_path}")

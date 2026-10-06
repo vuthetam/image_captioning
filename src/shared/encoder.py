@@ -4,7 +4,7 @@ from transformers import CLIPVisionModel, CLIPModel
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
-from src.shared.config import VISUAL_ENCODER_MODEL
+from src.shared.config import VISUAL_ENCODER_MODEL, RETRIEVAL_ENCODER_MODEL
 from src.shared.utils import extract_global_embedding
 
 class CLIPVisualEncoder(nn.Module):
@@ -29,7 +29,7 @@ class CLIPVisualEncoder(nn.Module):
 class CLIPImageEmbeddingEncoder(nn.Module):
     def __init__(self, **kwargs) -> None:
         super().__init__()
-        self.model = CLIPModel.from_pretrained(VISUAL_ENCODER_MODEL, **kwargs)
+        self.model = CLIPModel.from_pretrained(RETRIEVAL_ENCODER_MODEL, **kwargs)
         self.model.requires_grad_(False)
         self.output_dim = self.model.projection_dim
 

@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.shared.config import TRAIN_DF_PATH, KB_MODEL_ID, KB_FAISS_INDEX_PATH, KB_METADATA_PATH
+from src.shared.config import TRAIN_DF_PATH, RETRIEVAL_ENCODER_MODEL , KB_FAISS_INDEX_PATH, KB_METADATA_PATH
 from src.shared.utils import extract_global_embedding
 
 def main():
@@ -30,10 +30,10 @@ def main():
         nlp = spacy.load("en_core_web_sm")
 
     # 1. Load CLIP Model
-    print(f"Loading CLIP model ({KB_MODEL_ID})...")
+    print(f"Loading CLIP model ({RETRIEVAL_ENCODER_MODEL })...")
     model_kwargs = {"torch_dtype": torch.float16} if device == "cuda" else {}
-    model = CLIPModel.from_pretrained(KB_MODEL_ID, **model_kwargs).to(device)
-    processor = CLIPProcessor.from_pretrained(KB_MODEL_ID)
+    model = CLIPModel.from_pretrained(RETRIEVAL_ENCODER_MODEL , **model_kwargs).to(device)
+    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
     model.eval()
 
     # 2. Đọc tập Train và lọc lấy các cột cần thiết cho Metadata

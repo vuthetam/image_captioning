@@ -51,12 +51,18 @@ TRAIN_DF_PATH = SPLITS_DIR / "train_df.parquet"
 VAL_DF_PATH = SPLITS_DIR / "val_df.parquet"
 TEST_DF_PATH = SPLITS_DIR / "test_df.parquet"
 
-# Knowledge Base (FAISS)
+# ==========================================
+# 3.1 ENCODER MODELS
+# ==========================================
 VISUAL_ENCODER_MODEL = os.getenv("VISUAL_ENCODER_MODEL", "openai/clip-vit-base-patch16")
-KB_MODEL_ID = VISUAL_ENCODER_MODEL
-MODEL_SAFE_NAME = VISUAL_ENCODER_MODEL.replace("/", "-")
+RETRIEVAL_ENCODER_MODEL = os.getenv("RETRIEVAL_ENCODER_MODEL", VISUAL_ENCODER_MODEL)
 
-KB_DIR = ARTIFACTS_DIR / MODEL_SAFE_NAME / "kb"
+VISUAL_SAFE_NAME = VISUAL_ENCODER_MODEL.replace("/", "-")
+RETRIEVAL_SAFE_NAME = RETRIEVAL_ENCODER_MODEL.replace("/", "-")
+
+
+# Knowledge Base (FAISS)
+KB_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
 KB_FAISS_INDEX_PATH = KB_DIR / "kb_text_index.faiss"
 KB_METADATA_PATH = KB_DIR / "kb_metadata.parquet"
@@ -64,21 +70,21 @@ IMAGE_KB_FAISS_INDEX_PATH = KB_DIR / "kb_image_index.faiss"
 IMAGE_KB_METADATA_PATH = KB_DIR / "kb_image_metadata.parquet"
 
 # RAG Contexts
-RAG_CONTEXTS_DIR = ARTIFACTS_DIR / MODEL_SAFE_NAME / "rag_contexts"
+RAG_CONTEXTS_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "rag_contexts"
 safe_mkdir(RAG_CONTEXTS_DIR)
 TRAIN_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "train_rag_contexts.parquet"
 VAL_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "val_rag_contexts.parquet"
 TEST_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "test_rag_contexts.parquet"
 
 # Visual features (Patch-level)
-VISUAL_FEATURES_DIR = Path(os.getenv("VISUAL_FEATURES_DIR", str(ARTIFACTS_DIR / MODEL_SAFE_NAME / "visual_features")))
+VISUAL_FEATURES_DIR = Path(os.getenv("VISUAL_FEATURES_DIR", str(ARTIFACTS_DIR / VISUAL_SAFE_NAME / "visual_features")))
 safe_mkdir(VISUAL_FEATURES_DIR)
 TRAIN_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "train_visual_features.h5"
 VAL_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "val_visual_features.h5"
 TEST_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "test_visual_features.h5"
 
 # Image Embeddings (Projected global features)
-IMAGE_EMBEDDINGS_DIR = Path(os.getenv("IMAGE_EMBEDDINGS_DIR", str(ARTIFACTS_DIR / MODEL_SAFE_NAME / "image_embeddings")))
+IMAGE_EMBEDDINGS_DIR = Path(os.getenv("IMAGE_EMBEDDINGS_DIR", str(ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "image_embeddings")))
 safe_mkdir(IMAGE_EMBEDDINGS_DIR)
 TRAIN_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "train_image_embeddings.h5"
 VAL_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "val_image_embeddings.h5"
@@ -138,3 +144,8 @@ TRAIN_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "train_rag_tensors.h5"
 VAL_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "val_rag_tensors.h5"
 TEST_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "test_rag_tensors.h5"
 TOP_K_RAG_IMAGES = int(os.getenv("TOP_K_RAG_IMAGES", "4"))
+
+# V5 RAG Related Images
+TRAIN_RELATED_IMAGES_PATH = RAG_CONTEXTS_DIR / "train_related_images.parquet"
+VAL_RELATED_IMAGES_PATH = RAG_CONTEXTS_DIR / "val_related_images.parquet"
+TEST_RELATED_IMAGES_PATH = RAG_CONTEXTS_DIR / "test_related_images.parquet"

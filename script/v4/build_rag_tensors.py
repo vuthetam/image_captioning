@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.shared.config import (
     BATCH_SIZE, TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
-    KB_MODEL_ID, IMAGES_DIR,
+    RETRIEVAL_ENCODER_MODEL , IMAGES_DIR,
     IMAGE_KB_FAISS_INDEX_PATH, IMAGE_KB_METADATA_PATH,
     TRAIN_VISUAL_FEATURES_PATH, VAL_VISUAL_FEATURES_PATH, TEST_VISUAL_FEATURES_PATH,
     TRAIN_RAG_TENSORS_PATH, VAL_RAG_TENSORS_PATH, TEST_RAG_TENSORS_PATH,
@@ -145,10 +145,10 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    print(f"\nLoading CLIP model ({KB_MODEL_ID})...")
+    print(f"\nLoading CLIP model ({RETRIEVAL_ENCODER_MODEL })...")
     target_dtype = torch.float16 if device == "cuda" else torch.float32
     vision_encoder = CLIPImageEmbeddingEncoder(torch_dtype=target_dtype).eval().to(device)
-    processor = CLIPProcessor.from_pretrained(KB_MODEL_ID)
+    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
 
     if device == "cuda" and torch.cuda.device_count() > 1:
         print(f"Bật chế độ Multi-GPU DataParallel với {torch.cuda.device_count()} GPUs!")

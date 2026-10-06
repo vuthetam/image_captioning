@@ -18,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.config import (
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
     TRAIN_VISUAL_FEATURES_PATH, VAL_VISUAL_FEATURES_PATH, TEST_VISUAL_FEATURES_PATH,
-    IMAGES_DIR,
+    IMAGES_DIR, VISUAL_ENCODER_MODEL
 )
 from src.shared.encoder import CLIPVisualEncoder, create_clip_transform
 from src.shared.dataset import RawImageDataset
@@ -38,6 +38,7 @@ def process_and_save(df_path, output_h5_path, encoder, transform, device, batch_
         h5f.create_dataset("imgids", data=df_unique["imgid"].to_numpy(dtype="int64"))
         h5f.attrs["feature_layout"] = "features[i] belongs to imgids[i]"
         h5f.attrs["chunk_rows"] = 1
+        h5f.attrs["model_id"] = VISUAL_ENCODER_MODEL
 
         feature_store = None
         current_idx = 0

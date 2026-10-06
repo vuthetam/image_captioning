@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.config import (
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
     TRAIN_RAG_CONTEXTS_PATH, VAL_RAG_CONTEXTS_PATH, TEST_RAG_CONTEXTS_PATH,
-    KB_MODEL_ID, KB_FAISS_INDEX_PATH, KB_METADATA_PATH,
+    RETRIEVAL_ENCODER_MODEL , KB_FAISS_INDEX_PATH, KB_METADATA_PATH,
     IMAGES_DIR
 )
 from src.shared.utils import extract_global_embedding
@@ -134,13 +134,13 @@ def main():
     accelerator = Accelerator(mixed_precision="fp16")
     
     accelerator.print(f"Khởi động môi trường Multi-GPU ({accelerator.num_processes} processes)")
-    accelerator.print(f"Loading CLIP model ({KB_MODEL_ID})...")
+    accelerator.print(f"Loading CLIP model ({RETRIEVAL_ENCODER_MODEL })...")
     
-    encoder = CLIPModel.from_pretrained(KB_MODEL_ID)
+    encoder = CLIPModel.from_pretrained(RETRIEVAL_ENCODER_MODEL )
     encoder.eval()
     encoder = accelerator.prepare(encoder)
     
-    processor = CLIPProcessor.from_pretrained(KB_MODEL_ID)
+    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
     
     accelerator.print("Đang tải FAISS Index và Knowledge Base Metadata...")
     # Khởi tạo None, chỉ GPU 0 cần load FAISS index để tiết kiệm RAM CPU
