@@ -22,7 +22,7 @@ from src.shared.config import (
     KB_MODEL_ID, KB_FAISS_INDEX_PATH, KB_METADATA_PATH,
     IMAGES_DIR
 )
-from src.shared.utils import extract_clip_features
+from src.shared.utils import extract_global_embedding
 
 TARGET_K = 8
 
@@ -70,7 +70,7 @@ def process_and_retrieve(df_path, output_parquet_path, encoder, processor, index
         with torch.no_grad():
             with accelerator.autocast():
                 output = unwrap_encoder.get_image_features(pixel_values=pixel_values)
-                image_features = extract_clip_features(output)
+                image_features = extract_global_embedding(output)
                 
             # Chuẩn hóa vector về độ dài = 1
             image_features = F.normalize(image_features, p=2, dim=-1)

@@ -12,7 +12,7 @@ def trainable_parameters(*modules: nn.Module):
                 yield parameter
 
 
-def extract_clip_features(output: object) -> torch.Tensor:
+def extract_global_embedding(output: object) -> torch.Tensor:
     """Extract projected CLIP embeddings from old and new Transformers outputs."""
     if isinstance(output, torch.Tensor):
         features = output

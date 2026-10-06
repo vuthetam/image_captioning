@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.shared.config import TRAIN_DF_PATH, KB_MODEL_ID, KB_FAISS_INDEX_PATH, KB_METADATA_PATH
-from src.shared.utils import extract_clip_features
+from src.shared.utils import extract_global_embedding
 
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -87,7 +87,7 @@ def main():
             inputs = {k: v.to(device) for k, v in inputs.items()}
             
             # Lấy text features, tương thích với nhiều phiên bản Transformers.
-            text_features = extract_clip_features(model.get_text_features(**inputs))
+            text_features = extract_global_embedding(model.get_text_features(**inputs))
             
             # Chuẩn hóa (Normalize) vector để dùng Inner Product tính ra Cosine Similarity
             text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)

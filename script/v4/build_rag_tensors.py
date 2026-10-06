@@ -24,7 +24,6 @@ from src.shared.config import (
     TOP_K_RAG_IMAGES,
     NUM_WORKERS,
 )
-from src.shared.utils import extract_clip_features
 from src.shared.dataset import RawImageDataset
 from src.shared.encoder import CLIPImageEmbeddingEncoder
 

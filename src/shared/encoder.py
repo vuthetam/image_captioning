@@ -5,6 +5,7 @@ from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
 from src.shared.config import VISUAL_ENCODER_MODEL
+from src.shared.utils import extract_global_embedding
 
 class CLIPVisualEncoder(nn.Module):
     def __init__(self, **kwargs) -> None:
@@ -35,8 +36,8 @@ class CLIPImageEmbeddingEncoder(nn.Module):
     def forward(self, images: Tensor) -> Tensor:
         self.model.eval()
         with torch.no_grad():
-            features = self.model.get_image_features(pixel_values=images)
-        return features
+            outputs = self.model.get_image_features(pixel_values=images)
+        return extract_global_embedding(outputs)
 
 
 def create_clip_transform():
