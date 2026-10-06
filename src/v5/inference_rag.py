@@ -11,7 +11,7 @@ from src.shared.vocabulary import Vocabulary
 from src.shared.inference import beam_search
 
 @torch.no_grad()
-def generate_captions_rag_v4(
+def generate_captions_rag_v5(
     model: nn.Module,
     dataloader: Iterable,
     vocab: Vocabulary,
@@ -31,7 +31,7 @@ def generate_captions_rag_v4(
     base_model = accelerator.unwrap_model(model)
 
     all_captions: dict[int, list[str]] = {}
-    iterator = tqdm(dataloader, disable=not show_progress, leave=False, desc="Generating V4 RAG")
+    iterator = tqdm(dataloader, disable=not show_progress, leave=False, desc="Generating V5 RAG")
 
     for batch in iterator:
         visual_inputs, rag_inputs, image_ids = batch

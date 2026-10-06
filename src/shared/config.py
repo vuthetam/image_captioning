@@ -70,12 +70,19 @@ TRAIN_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "train_rag_contexts.parquet"
 VAL_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "val_rag_contexts.parquet"
 TEST_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "test_rag_contexts.parquet"
 
-# Visual features
+# Visual features (Patch-level)
 VISUAL_FEATURES_DIR = Path(os.getenv("VISUAL_FEATURES_DIR", str(ARTIFACTS_DIR / MODEL_SAFE_NAME / "visual_features")))
 safe_mkdir(VISUAL_FEATURES_DIR)
 TRAIN_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "train_visual_features.h5"
 VAL_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "val_visual_features.h5"
 TEST_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "test_visual_features.h5"
+
+# Image Embeddings (Projected global features)
+IMAGE_EMBEDDINGS_DIR = Path(os.getenv("IMAGE_EMBEDDINGS_DIR", str(ARTIFACTS_DIR / MODEL_SAFE_NAME / "image_embeddings")))
+safe_mkdir(IMAGE_EMBEDDINGS_DIR)
+TRAIN_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "train_image_embeddings.h5"
+VAL_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "val_image_embeddings.h5"
+TEST_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "test_image_embeddings.h5"
 
 
 

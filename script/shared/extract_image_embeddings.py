@@ -8,7 +8,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from tqdm.auto import tqdm
 import h5py
-from PIL import Image
+
+from src.shared.encoder import CLIPImageEmbeddingEncoder
 
 # Đảm bảo import được src
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -17,20 +18,21 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.shared.config import (
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
-    TRAIN_VISUAL_FEATURES_PATH, VAL_VISUAL_FEATURES_PATH, TEST_VISUAL_FEATURES_PATH,
+    TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
     IMAGES_DIR,
+    KB_MODEL_ID,
+    NUM_WORKERS
 )
-from src.shared.encoder import CLIPVisualEncoder, create_clip_transform
+from transformers import CLIPProcessor
 from src.shared.dataset import RawImageDataset
 
-def process_and_save(df_path, output_h5_path, encoder, transform, device, batch_size=256):
+def process_and_save(df_path, output_h5_path, model, processor, device, batch_size=256):
     print(f"\nĐang xử lý {df_path.name}...")
         
     df = pd.read_parquet(df_path)
     df_unique = df.drop_duplicates(subset=["imgid"]).reset_index(drop=True)
-    dataset = RawImageDataset(df_unique, IMAGES_DIR, transform=transform)
-    # shuffle=False là bắt buộc để giữ thứ tự tuần tự với index
-    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=4, shuffle=False)
+    dataset = RawImageDataset(df_unique, IMAGES_DIR, processor=processor)
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=NUM_WORKERS, shuffle=False)
     
     output_h5_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -56,9 +58,10 @@ def process_and_save(df_path, output_h5_path, encoder, transform, device, batch_
             with torch.no_grad():
                 if device.type == 'cuda':
                     with torch.autocast(device_type='cuda', dtype=torch.float16):
-                        features = encoder(pixel_values)
+                        # Trích xuất image embeddings (đã qua lớp projection)
+                        features = model(pixel_values)
                 else:
-                    features = encoder(pixel_values)
+                    features = model(pixel_values)
                     
                 # Ép kiểu chuẩn về float16 để ghi H5
                 features = features.to(torch.float16).cpu().numpy()
@@ -78,25 +81,26 @@ def process_and_save(df_path, output_h5_path, encoder, transform, device, batch_
 
     print(f"Đã lưu đặc trưng tại {output_h5_path}")
 
+
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_gpus = torch.cuda.device_count()
     
     print("Khởi động môi trường...")
-    print("Đang tải CLIPVisualEncoder...")
+    print(f"Đang tải CLIPImageEmbeddingEncoder ({KB_MODEL_ID})...")
         
     model_kwargs = {"torch_dtype": torch.float16} if device.type == "cuda" else {}
-    encoder = CLIPVisualEncoder(**model_kwargs).eval().to(device)
+    model = CLIPImageEmbeddingEncoder(**model_kwargs).eval().to(device)
     
     if num_gpus > 1:
-        encoder = nn.DataParallel(encoder)
+        model = nn.DataParallel(model)
     
-    transform = create_clip_transform()
+    processor = CLIPProcessor.from_pretrained(KB_MODEL_ID)
     
     datasets = [
-        (TRAIN_DF_PATH, TRAIN_VISUAL_FEATURES_PATH),
-        (VAL_DF_PATH, VAL_VISUAL_FEATURES_PATH),
-        (TEST_DF_PATH, TEST_VISUAL_FEATURES_PATH)
+        (TRAIN_DF_PATH, TRAIN_IMAGE_EMBEDDINGS_PATH),
+        (VAL_DF_PATH, VAL_IMAGE_EMBEDDINGS_PATH),
+        (TEST_DF_PATH, TEST_IMAGE_EMBEDDINGS_PATH)
     ]
     
     for df_path, h5_path in datasets:
@@ -104,8 +108,8 @@ def main():
             process_and_save(
                 df_path,
                 h5_path,
-                encoder,
-                transform,
+                model,
+                processor,
                 device,
                 batch_size=256,
             )

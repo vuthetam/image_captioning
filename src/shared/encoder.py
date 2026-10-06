@@ -1,13 +1,15 @@
 import torch
 from torch import Tensor, nn
-from transformers import CLIPVisionModel
+from transformers import CLIPVisionModel, CLIPModel
+from torchvision import transforms
+from torchvision.transforms import InterpolationMode
 
 from src.shared.config import VISUAL_ENCODER_MODEL
 
 class CLIPVisualEncoder(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, **kwargs) -> None:
         super().__init__()
-        clip_model = CLIPVisionModel.from_pretrained(VISUAL_ENCODER_MODEL)
+        clip_model = CLIPVisionModel.from_pretrained(VISUAL_ENCODER_MODEL, **kwargs)
 
         # Support both plain CLIPVisionModel and wrappers that expose .vision_model.
         self.backbone = getattr(clip_model, "vision_model", clip_model)
@@ -22,8 +24,20 @@ class CLIPVisualEncoder(nn.Module):
         # Preserve CLS and patch tokens so downstream consumers can choose either.
         return hidden_states
 
-from torchvision import transforms
-from torchvision.transforms import InterpolationMode
+
+class CLIPImageEmbeddingEncoder(nn.Module):
+    def __init__(self, **kwargs) -> None:
+        super().__init__()
+        self.model = CLIPModel.from_pretrained(VISUAL_ENCODER_MODEL, **kwargs)
+        self.model.requires_grad_(False)
+        self.output_dim = self.model.projection_dim
+
+    def forward(self, images: Tensor) -> Tensor:
+        self.model.eval()
+        with torch.no_grad():
+            features = self.model.get_image_features(pixel_values=images)
+        return features
+
 
 def create_clip_transform():
     return transforms.Compose(

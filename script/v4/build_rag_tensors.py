@@ -25,21 +25,9 @@ from src.shared.config import (
     NUM_WORKERS,
 )
 from src.shared.utils import extract_clip_features
+from src.shared.dataset import RawImageDataset
+from src.shared.encoder import CLIPImageEmbeddingEncoder
 
-class RawImageDataset(Dataset):
-    def __init__(self, df, processor):
-        self.df = df.drop_duplicates(subset=["imgid"]).reset_index(drop=True)
-        self.processor = processor
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        path = IMAGES_DIR / row["filepath"] / row["filename"]
-        with Image.open(path) as img:
-            inputs = self.processor(images=img.convert("RGB"), return_tensors="pt")
-        return inputs["pixel_values"][0], int(row["imgid"])
 
 def load_h5_to_ram(h5_path: Path):
     print(f"  Loading {h5_path.name} into RAM...", flush=True)
@@ -49,23 +37,16 @@ def load_h5_to_ram(h5_path: Path):
     imgid2idx = {int(iid): i for i, iid in enumerate(imgids)}
     return features, imgid2idx
 
-class VisionEncoderDP(torch.nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, pixel_values):
-        return self.model.get_image_features(pixel_values=pixel_values)
 
 def encode_image_features(df, vision_encoder, target_dtype, processor, device) -> tuple[list[int], np.ndarray]:
-    dataset = RawImageDataset(df, processor)
+    df_unique = df.drop_duplicates(subset=["imgid"]).reset_index(drop=True)
+    dataset = RawImageDataset(df_unique, IMAGES_DIR, processor=processor)
     loader = DataLoader(dataset, batch_size=BATCH_SIZE*2, shuffle=False, num_workers=NUM_WORKERS)
     all_img_features, all_imgids = [], []
     with torch.no_grad():
         for pixels, batch_imgids in tqdm(loader, desc="  Encode global embedding", leave=False):
             pixels = pixels.to(device, dtype=target_dtype)
-            raw = vision_encoder(pixel_values=pixels)
-            vecs = extract_clip_features(raw)
+            vecs = vision_encoder(pixel_values=pixels)
             # CRITICAL FIX: Cast to float32 BEFORE norm to avoid NaN!
             vecs = vecs.to(torch.float32)
             vecs = F.normalize(vecs, p=2, dim=-1)
@@ -166,13 +147,10 @@ def main():
     print(f"Device: {device}")
 
     print(f"\nLoading CLIP model ({KB_MODEL_ID})...")
-    model_kwargs = {"torch_dtype": torch.float16} if device == "cuda" else {}
-    model = CLIPModel.from_pretrained(KB_MODEL_ID, **model_kwargs).to(device)
+    target_dtype = torch.float16 if device == "cuda" else torch.float32
+    vision_encoder = CLIPImageEmbeddingEncoder(torch_dtype=target_dtype).eval().to(device)
     processor = CLIPProcessor.from_pretrained(KB_MODEL_ID)
-    model.eval()
 
-    target_dtype = model.dtype
-    vision_encoder = VisionEncoderDP(model)
     if device == "cuda" and torch.cuda.device_count() > 1:
         print(f"Bật chế độ Multi-GPU DataParallel với {torch.cuda.device_count()} GPUs!")
         vision_encoder = torch.nn.DataParallel(vision_encoder)
