@@ -65,3 +65,14 @@ class H5FeatureStore:
         feature_index = self._imgid_to_index[imgid]
         feature = np.asarray(self._h5_file["features"][feature_index])
         return torch.from_numpy(feature)
+
+    def get_cls_token(self, imgid: int) -> torch.Tensor:
+        """Chỉ đọc duy nhất CLS token (token đầu tiên) từ ổ cứng, tối ưu Disk I/O"""
+        imgid = int(imgid)
+        if self._h5_file is None:
+            self._h5_file = h5py.File(self.features_path, "r")
+        feature_index = self._imgid_to_index[imgid]
+        
+        # Slice trực tiếp token [0] (CLS) trên HDF5 trước khi nạp vào RAM
+        feature = np.asarray(self._h5_file["features"][feature_index, 0])
+        return torch.from_numpy(feature)

@@ -2,11 +2,9 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8")
 from pathlib import Path
 import pandas as pd
-import torch
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from transformers import CLIPProcessor
+import numpy as np
 import faiss
+import h5py
 
 # Đảm bảo import được src
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -15,78 +13,49 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.shared.config import (
     TRAIN_DF_PATH,
-    RETRIEVAL_ENCODER_MODEL ,
-    IMAGES_DIR,
+    TRAIN_IMAGE_EMBEDDINGS_PATH,
     IMAGE_KB_FAISS_INDEX_PATH,
     IMAGE_KB_METADATA_PATH
 )
-from src.shared.dataset import RawImageDataset
-from src.shared.encoder import CLIPImageEmbeddingEncoder
-
 
 def main():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Đang sử dụng device: {device}")
-    num_gpus = torch.cuda.device_count()
-    
-    # 1. Load CLIP Model
-    print(f"Loading CLIP model ({RETRIEVAL_ENCODER_MODEL })...")
-    model_kwargs = {"torch_dtype": torch.float16} if device == "cuda" else {}
-    extractor = CLIPImageEmbeddingEncoder(**model_kwargs).eval().to(device)
-    if num_gpus > 1:
-        extractor = torch.nn.DataParallel(extractor)
-    
-    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
-
-    # 2. Đọc tập Train và loại bỏ trùng lặp imgid
     print("Đọc tập train_df để xây dựng KB...")
     train_df = pd.read_parquet(TRAIN_DF_PATH)
     
     # Drop duplicate imgid
-    print(f"Tổng số hàng trước khi loại trùng lặp: {len(train_df):,}")
     combined_df = train_df.drop_duplicates(subset=['imgid']).reset_index(drop=True)
-    print(f"Tổng số ảnh (imgid) độc lập cần mã hóa (Train only): {len(combined_df):,}")
-    
-    # Chỉ giữ lại metadata tối giản
     metadata_df = combined_df[['imgid', 'filepath', 'filename']].copy()
 
-    # Khởi tạo Dataset và DataLoader
-    dataset = RawImageDataset(metadata_df, IMAGES_DIR, processor=processor)
-    
-    # Đặt num_workers=0 hoặc 1 nếu chạy test, có thể nâng lên khi chạy thực tế
-    batch_size = 64
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-
-    # 3. Khởi tạo FAISS Index
-    # CLIP large có dimension = 768, ViT-B/32 có dimension = 512.
-    base_model = extractor.module.model if isinstance(extractor, torch.nn.DataParallel) else extractor.model
-    d = base_model.config.projection_dim
+    # 1. Nạp Image Embeddings đã được trích xuất sẵn từ HDF5
+    print(f"Đang nạp image embeddings từ {TRAIN_IMAGE_EMBEDDINGS_PATH.name}...")
+    if not TRAIN_IMAGE_EMBEDDINGS_PATH.exists():
+        raise FileNotFoundError(f"Lỗi: Không tìm thấy file {TRAIN_IMAGE_EMBEDDINGS_PATH}. Hãy chạy script extract_image_embeddings.py trước!")
+        
+    with h5py.File(TRAIN_IMAGE_EMBEDDINGS_PATH, "r") as h5f:
+        h5_imgids = np.asarray(h5f["imgids"], dtype=np.int64)
+        h5_features = np.asarray(h5f["features"], dtype=np.float32)
+        
+    if len(h5_imgids) != len(metadata_df):
+        raise ValueError(f"Số lượng ảnh trong HDF5 ({len(h5_imgids)}) không khớp với metadata ({len(metadata_df)})")
+        
+    # Kiểm tra tính toàn vẹn của thứ tự imgid
+    if not np.array_equal(h5_imgids, metadata_df['imgid'].to_numpy()):
+        print("Cảnh báo: Thứ tự imgid trong HDF5 không khớp với metadata. Đang đồng bộ lại...")
+        # Tạo mapping để sắp xếp lại features cho đúng với metadata_df
+        idx_map = {imgid: idx for idx, imgid in enumerate(h5_imgids)}
+        ordered_indices = [idx_map[imgid] for imgid in metadata_df['imgid']]
+        h5_features = h5_features[ordered_indices]
+        
+    # 2. Khởi tạo FAISS Index
+    d = h5_features.shape[1]
+    print(f"Khởi tạo FAISS IndexFlatIP với dimension = {d}")
     index = faiss.IndexFlatIP(d)
 
-    # 4. Rút trích Vector theo Batch
-    print("Bắt đầu trích xuất Image Embeddings...")
-    with torch.no_grad():
-        for batch_tensors, _ in tqdm(dataloader, desc="Encoding Images"):
-            pixel_values = batch_tensors.to(device)
-            
-            # Lấy image features
-            if device == 'cuda':
-                with torch.autocast(device_type='cuda', dtype=torch.float16):
-                    image_features = extractor(pixel_values)
-            else:
-                image_features = extractor(pixel_values)
+    # 3. Chuẩn hóa L2 và thêm vào FAISS
+    faiss.normalize_L2(h5_features)
+    index.add(h5_features)
 
-            # Ép kiểu sang float32 TRƯỚC KHI chuẩn hóa (để tránh lỗi vượt quá giới hạn của float16 gây NaN)
-            image_features = image_features.to(torch.float32)
-            
-            # Chuẩn hóa (Normalize) vector để dùng Inner Product tính ra Cosine Similarity
-            image_features = torch.nn.functional.normalize(image_features, p=2, dim=-1)
-            
-            # Chuyển về numpy và nạp vào FAISS
-            embeddings_np = image_features.cpu().numpy()
-            index.add(embeddings_np)
-
-    # 5. Lưu file xuống ổ cứng
+    # 4. Lưu file xuống ổ cứng
     print("\nĐang lưu Image Knowledge Base xuống đĩa...")
     
     # Tạo thư mục chứa nếu chưa có
