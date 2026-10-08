@@ -29,27 +29,40 @@ artifacts/vocab.json
 ## 3. Xây dựng Knowledge Base cho RAG
 
 ```bash
-python script/build_kb.py
+python script/shared/build_kb.py
 ```
 
-Script dùng caption của tập train để tạo text embedding bằng model `openai/clip-vit-large-patch14-336`, chuẩn hóa vector và lưu:
+Script dùng caption của tập train để tạo text embedding bằng `RETRIEVAL_ENCODER_MODEL`, chuẩn hóa vector và lưu:
 
-- `artifacts/kb/kb_text_index.faiss`
-- `artifacts/kb/kb_metadata.parquet`
+- `artifacts/<retrieval-model-id>/kb/kb_text_index.faiss`
+- `artifacts/<retrieval-model-id>/kb/kb_text_metadata.parquet`
 
 ## 4. Retrieve context RAG
 
 ```bash
-accelerate launch script/retrieve_rag_contexts.py
+python script/shared/retrieve_rag_contexts.py
 ```
 
-Script dùng ảnh làm truy vấn CLIP, tìm các caption tương tự trong FAISS và lưu tối đa `8` context cho mỗi ảnh vào:
+Chạy `python script/shared/extract_image_embeddings.py` trước để tạo image embeddings
+cho train/val/test bằng `RETRIEVAL_ENCODER_MODEL`. Script truy hồi đọc các embedding
+đã lưu từ HDF5, chuẩn hóa L2 và tìm caption tương tự trong text FAISS index trên CPU.
+Script không cần ảnh gốc, visual features, tải CLIP hay chạy Accelerate, và lưu tối đa
+`8` context cho mỗi ảnh vào:
 
-- `artifacts/rag/train_rag_contexts.parquet`
-- `artifacts/rag/val_rag_contexts.parquet`
-- `artifacts/rag/test_rag_contexts.parquet`
+- `artifacts/<retrieval-model-id>/rag_contexts/train_rag_contexts.parquet`
+- `artifacts/<retrieval-model-id>/rag_contexts/val_rag_contexts.parquet`
+- `artifacts/<retrieval-model-id>/rag_contexts/test_rag_contexts.parquet`
 
-Script đọc trực tiếp ảnh và sử dụng `kb_text_index.faiss` cùng `kb_metadata.parquet`.
+Đầu vào gồm `train_image_embeddings.h5`, `val_image_embeddings.h5`,
+`test_image_embeddings.h5` trong `IMAGE_EMBEDDINGS_DIR`, cùng `kb_text_index.faiss`
+và `kb_text_metadata.parquet` trong thư mục KB của cùng model. Mỗi file HDF5 có
+`imgids [N]` và `features [N, D]` đã qua CLIP projection. Caption thuộc chính ảnh
+truy vấn được loại khỏi kết quả. Trong tên thư mục model, `/` được thay bằng `-`
+(ví dụ `openai-clip-vit-large-patch14`).
+
+Parquet đầu ra có `imgid` của ảnh truy vấn và `imgids` là danh sách ID ảnh
+của từng caption truy hồi, cùng thứ tự với `captions`, `tokens`, `objects`, `relations`
+và `retrieval_scores`. Một ID có thể xuất hiện nhiều lần nếu lấy nhiều caption của ảnh đó.
 
 ## 5. Train, generate va evaluate bang visual features
 

@@ -78,7 +78,7 @@ def main() -> None:
 
     model, test_loader = accelerator.prepare(model, test_loader)
     caption_dict = generate_captions_rag_v5(
-        model, test_loader, vocab, BEAM_SIZE, MAX_LENGTH, accelerator, show_progress=True, include_cls_token=True
+        model, test_loader, vocab, BEAM_SIZE, MAX_LENGTH, accelerator, show_progress=True, include_cls_token=False
     )
 
     if accelerator.is_main_process:

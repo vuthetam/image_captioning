@@ -1,170 +1,113 @@
-# Chạy bằng accelerate
+"""Retrieve text RAG contexts using precomputed CLIP image embeddings on CPU."""
 
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 from pathlib import Path
-import pandas as pd
-import torch
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from tqdm.auto import tqdm
-from transformers import CLIPProcessor, CLIPModel
+
 import faiss
-from PIL import Image
-from accelerate import Accelerator
+import h5py
+import numpy as np
+import pandas as pd
+from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.shared.config import (
-    TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
+    TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
     TRAIN_RAG_CONTEXTS_PATH, VAL_RAG_CONTEXTS_PATH, TEST_RAG_CONTEXTS_PATH,
-    RETRIEVAL_ENCODER_MODEL , TEXT_KB_FAISS_INDEX_PATH, TEXT_KB_METADATA_PATH,
-    IMAGES_DIR
+    RETRIEVAL_ENCODER_MODEL, TEXT_KB_FAISS_INDEX_PATH, TEXT_KB_METADATA_PATH,
 )
-from src.shared.utils import extract_global_embedding
 
 TARGET_K = 8
+CONTEXT_COLUMNS = ["retrieval_imgids", "captions", "tokens", "objects", "relations"]
+METADATA_COLUMNS = ["imgid", "caption", "tokens", "objects", "relations"]
 
-class ImageQueryDataset(Dataset):
-    def __init__(self, df, images_path, processor):
-        self.imgids = df['imgid'].tolist()
-        self.filepaths = df['filepath'].tolist()
-        self.filenames = df['filename'].tolist()
-        self.images_path = images_path
-        self.processor = processor
 
-    def __len__(self):
-        return len(self.imgids)
+def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_metadata, batch_size=256):
+    img_embeddings_path = Path(img_embeddings_path)
+    output_parquet_path = Path(output_parquet_path)
+    print(f"\nĐang xử lý {img_embeddings_path.name}...")
 
-    def __getitem__(self, idx):
-        path = self.images_path / self.filepaths[idx] / self.filenames[idx]
-        with Image.open(path) as img:
-            pixel_values = self.processor(images=img.convert("RGB"), return_tensors="pt")
-            
-        return {
-            "imgid": int(self.imgids[idx]), 
-            # Squeeze to remove batch dim added by processor
-            "pixel_values": pixel_values["pixel_values"].squeeze(0)
-        }
-
-def process_and_retrieve(df_path, output_parquet_path, encoder, processor, index, kb_metadata, accelerator, batch_size=256):
-    accelerator.print(f"\nĐang xử lý {df_path.name}...")
-    
-    df = pd.read_parquet(df_path)
-    df_unique = df.drop_duplicates(subset=['imgid']).reset_index(drop=True)
-    dataset = ImageQueryDataset(df_unique, IMAGES_DIR, processor)
-    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=4)
-
-    dataloader = accelerator.prepare(dataloader)
-    
+    kb_imgids = kb_metadata["imgid"].to_numpy(dtype=np.int64)
+    # Một ảnh có nhiều caption trong text KB; lấy dư để loại hết caption của chính nó.
+    max_self_captions = int(kb_metadata["imgid"].value_counts().max())
+    search_k = min(index.ntotal, TARGET_K + max_self_captions)
     results = []
-    
-    pbar = tqdm(dataloader, disable=not accelerator.is_local_main_process, desc=f"Retrieving {df_path.name}", leave=False)
-    unwrap_encoder = accelerator.unwrap_model(encoder)
 
-    for batch in pbar:
-        imgids = batch["imgid"]
-        pixel_values = batch["pixel_values"]
-        
-        with torch.no_grad():
-            with accelerator.autocast():
-                output = unwrap_encoder.get_image_features(pixel_values=pixel_values)
-                image_features = extract_global_embedding(output)
-                
-            # Chuẩn hóa vector về độ dài = 1
-            image_features = F.normalize(image_features, p=2, dim=-1)
-            
-        # Gom Vector và ID từ 2 GPU về
-        gathered_ids, gathered_features = accelerator.gather_for_metrics((imgids, image_features))
-        
-        if accelerator.is_main_process:
-            gathered_features = gathered_features.cpu().numpy().astype('float32')
-            gathered_ids = gathered_ids.cpu().numpy()
-            
-            # Truy vấn FAISS (Chạy trên CPU)
-            distances, indices = index.search(gathered_features, TARGET_K+7)
-            
-            for idx, imgid in enumerate(gathered_ids):
-                retrieved_ids = indices[idx]
-                
-                # Lấy ID gốc của ảnh, caption và các mảng NLP tương ứng dựa vào id của faiss
-                kb_slice = kb_metadata.iloc[retrieved_ids]
-                retrieved_imgids = kb_slice['imgid'].tolist()
-                raw_texts = kb_slice['caption'].tolist()
-                raw_tokens = kb_slice['tokens'].tolist()
-                raw_objects = kb_slice['objects'].tolist()
-                raw_relations = kb_slice['relations'].tolist()
-                raw_scores = distances[idx].tolist()
-                
-                valid_texts = []
-                valid_tokens = []
-                valid_objects = []
-                valid_relations = []
-                valid_scores = []
-                
-                for r_id, txt, tok, obj, rel, score in zip(retrieved_imgids, raw_texts, raw_tokens, raw_objects, raw_relations, raw_scores):
-                    if r_id != imgid: # Loại bỏ các caption của chính bức ảnh đang query
-                        valid_texts.append(txt)
-                        valid_tokens.append(tok)
-                        valid_objects.append(obj)
-                        valid_relations.append(rel)
-                        valid_scores.append(score)
-                
-                # Cắt đúng Top TARGET_K
-                results.append({
-                    'imgid': imgid,
-                    'captions': valid_texts[:TARGET_K],
-                    'tokens': valid_tokens[:TARGET_K],
-                    'objects': valid_objects[:TARGET_K],
-                    'relations': valid_relations[:TARGET_K],
-                    'retrieval_scores': valid_scores[:TARGET_K]
-                })
+    with h5py.File(img_embeddings_path, "r") as h5f:
+        stored_model = h5f.attrs.get("model_id")
+        if stored_model is not None and stored_model != RETRIEVAL_ENCODER_MODEL:
+            raise ValueError(
+                f"Model của {img_embeddings_path} ({stored_model}) không khớp "
+                f"RETRIEVAL_ENCODER_MODEL ({RETRIEVAL_ENCODER_MODEL})."
+            )
 
-    # Sau khi chạy xong toàn bộ batch, GPU 0 lưu file
-    if accelerator.is_main_process:
-        results_df = pd.DataFrame(results)
-        
-        output_parquet_path.parent.mkdir(parents=True, exist_ok=True)
-        results_df.to_parquet(output_parquet_path)
-        accelerator.print(f"Đã lưu kết quả tại {output_parquet_path}")
+        query_imgids = np.asarray(h5f["imgids"], dtype=np.int64)
+        features = h5f["features"]
+        if query_imgids.ndim != 1 or features.ndim != 2 or features.shape[0] != len(query_imgids):
+            raise ValueError("HDF5 phải có imgids [N] và image embeddings features [N, D].")
+        if features.shape[1] != index.d:
+            raise ValueError(
+                f"Image embeddings có {features.shape[1]} chiều nhưng text index có {index.d} chiều. "
+                "Hãy dùng image embeddings và text KB từ cùng RETRIEVAL_ENCODER_MODEL."
+            )
 
-        
+        # Đọc từng batch để không phải nạp toàn bộ embedding của split vào RAM.
+        for start in tqdm(range(0, len(query_imgids), batch_size), desc="Retrieving", leave=False):
+            batch_imgids = query_imgids[start:start + batch_size]
+            query_features = np.asarray(features[start:start + batch_size], dtype=np.float32)
+            faiss.normalize_L2(query_features)
+            distances, indices = index.search(query_features, search_k)
+
+            for imgid, retrieved_indices, raw_scores in zip(batch_imgids, indices, distances):
+                # FAISS có thể trả -1 nếu không đủ kết quả; giữ scores và indices thẳng hàng.
+                valid = (retrieved_indices >= 0) & (retrieved_indices < len(kb_metadata))
+                retrieved_indices = retrieved_indices[valid]
+                raw_scores = raw_scores[valid]
+                not_self = kb_imgids[retrieved_indices] != imgid
+                selected_indices = retrieved_indices[not_self][:TARGET_K]
+                selected_scores = raw_scores[not_self][:TARGET_K]
+                selected_metadata = kb_metadata.iloc[selected_indices]
+
+                result = {"imgid": int(imgid)}
+                for output_column, metadata_column in zip(CONTEXT_COLUMNS, METADATA_COLUMNS):
+                    result[output_column] = selected_metadata[metadata_column].tolist()
+                result["retrieval_scores"] = [float(score) for score in selected_scores]
+                results.append(result)
+
+    results_df = pd.DataFrame(
+        results, columns=["imgid", *CONTEXT_COLUMNS, "retrieval_scores"]
+    )
+    output_parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    results_df.to_parquet(output_parquet_path, index=False)
+    print(f"Đã lưu {len(results_df):,} ảnh tại {output_parquet_path}")
+
+
 def main():
-    accelerator = Accelerator(mixed_precision="fp16")
-    
-    accelerator.print(f"Khởi động môi trường Multi-GPU ({accelerator.num_processes} processes)")
-    accelerator.print(f"Loading CLIP model ({RETRIEVAL_ENCODER_MODEL })...")
-    
-    encoder = CLIPModel.from_pretrained(RETRIEVAL_ENCODER_MODEL )
-    encoder.eval()
-    encoder = accelerator.prepare(encoder)
-    
-    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
-    
-    accelerator.print("Đang tải FAISS Index và Knowledge Base Metadata...")
-    # Khởi tạo None, chỉ GPU 0 cần load FAISS index để tiết kiệm RAM CPU
-    index = None
-    kb_metadata = None
-    
-    if accelerator.is_main_process:
-        if not TEXT_KB_FAISS_INDEX_PATH.exists():
-            accelerator.print(f"Lỗi: Không tìm thấy {TEXT_KB_FAISS_INDEX_PATH}")
-            return
-        index = faiss.read_index(str(TEXT_KB_FAISS_INDEX_PATH))
-        kb_metadata = pd.read_parquet(TEXT_KB_METADATA_PATH)
-
-    datasets = [
-        (TRAIN_DF_PATH, TRAIN_RAG_CONTEXTS_PATH),
-        (VAL_DF_PATH, VAL_RAG_CONTEXTS_PATH),
-        (TEST_DF_PATH, TEST_RAG_CONTEXTS_PATH)
+    splits = [
+        (TRAIN_IMAGE_EMBEDDINGS_PATH, TRAIN_RAG_CONTEXTS_PATH),
+        (VAL_IMAGE_EMBEDDINGS_PATH, VAL_RAG_CONTEXTS_PATH),
+        (TEST_IMAGE_EMBEDDINGS_PATH, TEST_RAG_CONTEXTS_PATH),
     ]
-    
-    for df_path, parquet_path in datasets:
-        if df_path.exists():
-            process_and_retrieve(df_path, parquet_path, encoder, processor, index, kb_metadata, accelerator)
-        else:
-            accelerator.print(f"Cảnh báo: Không tìm thấy {df_path}")
+    for path in [TEXT_KB_FAISS_INDEX_PATH, TEXT_KB_METADATA_PATH, *(p for p, _ in splits)]:
+        if not path.is_file():
+            raise FileNotFoundError(f"Không tìm thấy {path}")
+
+    print(f"Truy hồi từ image embeddings đã lưu ({RETRIEVAL_ENCODER_MODEL}) trên CPU.")
+    print("Đang tải Text FAISS Index và Knowledge Base Metadata...")
+    index = faiss.read_index(str(TEXT_KB_FAISS_INDEX_PATH))
+    kb_metadata = pd.read_parquet(TEXT_KB_METADATA_PATH)
+    if index.ntotal == 0 or index.ntotal != len(kb_metadata):
+        raise ValueError("Text index phải không rỗng và có số vector bằng số dòng metadata.")
+    missing_columns = set(METADATA_COLUMNS) - set(kb_metadata.columns)
+    if missing_columns:
+        raise ValueError(f"Text KB metadata thiếu các cột: {sorted(missing_columns)}")
+
+    for img_embeddings_path, output_parquet_path in splits:
+        process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_metadata)
+
 
 if __name__ == "__main__":
     main()
