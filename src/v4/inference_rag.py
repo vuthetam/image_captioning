@@ -34,7 +34,7 @@ def generate_captions_rag_v4(
     iterator = tqdm(dataloader, disable=not show_progress, leave=False, desc="Generating V4 RAG")
 
     for batch in iterator:
-        visual_inputs, rag_inputs, image_ids = batch
+        visual_inputs, rag_inputs, rag_score, image_ids = batch
         
         visual_inputs = visual_inputs.to(accelerator.device)
         rag_inputs = rag_inputs.to(accelerator.device)

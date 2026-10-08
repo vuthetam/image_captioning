@@ -26,8 +26,10 @@ from src.shared.config import (
     PREDICTIONS_PATH,
     TEST_DF_PATH,
     TEST_VISUAL_FEATURES_PATH,
-    TEST_RAG_TENSORS_PATH,
     VOCAB_PATH,
+    TOP_K_RAG_IMAGES,
+    TEST_RELATED_IMAGES_PATH,
+    TRAIN_VISUAL_FEATURES_PATH,
 )
 from src.v4.dataset import FeatureDatasetV4_RAG
 from src.v4.inference_rag import generate_captions_rag_v4
@@ -43,8 +45,10 @@ def main() -> None:
     
     test_dataset = FeatureDatasetV4_RAG(
         df=test_df, 
+        related_df=pd.read_parquet(TEST_RELATED_IMAGES_PATH),
         features_path=TEST_VISUAL_FEATURES_PATH,
-        rag_tensors_path=TEST_RAG_TENSORS_PATH
+        rag_features_path=TRAIN_VISUAL_FEATURES_PATH,
+        top_k=TOP_K_RAG_IMAGES,
     )
     
     test_loader = DataLoader(

@@ -29,13 +29,13 @@ from src.shared.config import (
     NUM_WORKERS,
     TRAIN_DF_PATH,
     TRAIN_VISUAL_FEATURES_PATH,
-    TRAIN_RAG_TENSORS_PATH,
     VAL_DF_PATH,
     VAL_VISUAL_FEATURES_PATH,
-    VAL_RAG_TENSORS_PATH,
     VOCAB_PATH,
     WEIGHT_DECAY,
     TOP_K_RAG_IMAGES,
+    TRAIN_RELATED_IMAGES_PATH,
+    VAL_RELATED_IMAGES_PATH,
 )
 from src.v4.dataset import FeatureCaptionDatasetV4_RAG
 from src.v4.engine_rag import evaluate_one_epoch_rag_v4, train_one_epoch_rag_v4
@@ -54,17 +54,21 @@ def main() -> None:
 
     train_dataset = FeatureCaptionDatasetV4_RAG(
         df=train_df,
+        related_df=pd.read_parquet(TRAIN_RELATED_IMAGES_PATH),
         vocab=vocab,
         features_path=TRAIN_VISUAL_FEATURES_PATH,
-        rag_tensors_path=TRAIN_RAG_TENSORS_PATH,
-        max_length=MAX_LENGTH
+        rag_features_path=TRAIN_VISUAL_FEATURES_PATH,
+        max_length=MAX_LENGTH,
+        top_k=TOP_K_RAG_IMAGES,
     )
     val_dataset = FeatureCaptionDatasetV4_RAG(
         df=val_df,
+        related_df=pd.read_parquet(VAL_RELATED_IMAGES_PATH),
         vocab=vocab,
         features_path=VAL_VISUAL_FEATURES_PATH,
-        rag_tensors_path=VAL_RAG_TENSORS_PATH,
-        max_length=MAX_LENGTH
+        rag_features_path=TRAIN_VISUAL_FEATURES_PATH,
+        max_length=MAX_LENGTH,
+        top_k=TOP_K_RAG_IMAGES,
     )
 
     train_loader = DataLoader(

@@ -50,7 +50,7 @@ def train_one_epoch_rag_v4(
     iterator = tqdm(dataloader, disable=not show_progress, leave=False, desc="Training V4 RAG")
 
     for batch in iterator:
-        visual_inputs, rag_inputs, input_ids, attention_mask = batch
+        visual_inputs, rag_inputs, rag_score, input_ids, attention_mask = batch
 
         visual_inputs = visual_inputs.to(accelerator.device)
         rag_inputs = rag_inputs.to(accelerator.device)
@@ -105,7 +105,7 @@ def evaluate_one_epoch_rag_v4(
     iterator = tqdm(dataloader, disable=not show_progress, leave=False, desc="Evaluating V4 RAG")
 
     for batch in iterator:
-        visual_inputs, rag_inputs, input_ids, attention_mask = batch
+        visual_inputs, rag_inputs, rag_score, input_ids, attention_mask = batch
 
         visual_inputs = visual_inputs.to(accelerator.device)
         rag_inputs = rag_inputs.to(accelerator.device)

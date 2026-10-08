@@ -103,18 +103,44 @@ class RagCaptionerV4(nn.Module):
     ) -> Tensor:
         """
         Luồng Sinh Từ (Inference/Evaluate):
-        Chỉ trích xuất đặc trưng memory một lần duy nhất trước khi đưa vào Beam Search.
+        Chỉ trích xuất đặc trưng memory một lần duy nhất.
+        
+        visual_inputs: [B, N, D_vis]
+        rag_inputs: [B, K, N, D_vis]
         """
         if not include_cls_token:
-            visual_inputs = visual_inputs[:, 1:, :]
-            rag_inputs = rag_inputs[:, 1:, :]
+            visual_inputs = visual_inputs[:, 1:, :] # [B, 196, D_vis]
+            rag_inputs = rag_inputs[:, :, 1:, :]    # [B, K, 196, D_vis]
             
+        B, K, N, D_vis = rag_inputs.shape
+        
+        # --- 1. ONLINE PATCH RETRIEVAL TRÊN GPU ---
+        # Flatten K và N để dùng cho Cross-Attention (Tích vô hướng)
+        rag_flat = rag_inputs.reshape(B, K * N, D_vis) # [B, K*N, D_vis]
+        
+        # Chuẩn hoá L2 để nhân ma trận tương đương với Cosine Similarity
+        q_norm = torch.nn.functional.normalize(visual_inputs, p=2, dim=-1) # [B, N, D_vis]
+        k_norm = torch.nn.functional.normalize(rag_flat, p=2, dim=-1)      # [B, K*N, D_vis]
+        
+        # Tính độ tương đồng giữa các patch của ảnh gốc và TẤT CẢ các patch của K ảnh truy hồi
+        similarity = torch.bmm(q_norm, k_norm.transpose(1, 2)) # [B, N, K*N]
+        
+        # Chọn ra patch có độ tương đồng cao nhất
+        best_patch_indices = torch.argmax(similarity, dim=-1, keepdim=True) # [B, N, 1]
+        
+        # Expand index để gather feature (D_vis)
+        best_patch_indices_expanded = best_patch_indices.expand(-1, -1, D_vis) # [B, N, D_vis]
+        
+        # Trích xuất các patch tốt nhất từ rag_flat để tạo thành RAG Tensor
+        retrieved_rag_features = torch.gather(rag_flat, 1, best_patch_indices_expanded) # [B, N, D_vis]
+        
+        # --- 2. DUNG HỢP BỞI RAG FUSION BLOCK ---
         target_dtype = self.visual_projector[0].weight.dtype
         visual_inputs = visual_inputs.to(dtype=target_dtype)
-        rag_inputs = rag_inputs.to(dtype=target_dtype)
+        retrieved_rag_features = retrieved_rag_features.to(dtype=target_dtype)
         
         visual_features = self.visual_projector(visual_inputs)
-        rag_features = self.visual_projector(rag_inputs)
+        rag_features = self.visual_projector(retrieved_rag_features)
         
         fused_memory = self.rag_fusion(visual_features, rag_features)
         return fused_memory
@@ -130,7 +156,7 @@ class RagCaptionerV4(nn.Module):
         """
         Luồng Training (Teacher Forcing).
         visual_inputs: Đặc trưng ảnh gốc [B, N, D_vis]
-        rag_inputs: Đặc trưng ảnh truy hồi [B, N, D_vis]
+        rag_inputs: Đặc trưng ảnh truy hồi [B, K, N, D_vis]
         """
         fused_memory = self.encode_memory(visual_inputs, rag_inputs, include_cls_token)
         
