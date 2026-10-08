@@ -126,9 +126,11 @@ def main() -> None:
 
     for epoch in range(start_epoch, NUM_EPOCHS):
         train_loss = train_one_epoch_rag_v5(
-            model, train_loader, optimizer, vocab.pad_idx(), accelerator, MAX_GRAD_NORM, True
+            model, train_loader, optimizer, vocab.pad_idx(), accelerator, MAX_GRAD_NORM, show_progress=True, include_cls_token=True
         )
-        val_loss = evaluate_one_epoch_rag_v5(model, val_loader, vocab.pad_idx(), accelerator, True)
+        val_loss = evaluate_one_epoch_rag_v5(
+            model, val_loader, vocab.pad_idx(), accelerator, show_progress=True, include_cls_token=True
+        )
         
         accelerator.print(
             f"[Epoch {epoch + 1:02d}/{NUM_EPOCHS}] "

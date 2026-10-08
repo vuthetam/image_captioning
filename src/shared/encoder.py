@@ -33,10 +33,10 @@ class CLIPImageEmbeddingEncoder(nn.Module):
         self.model.requires_grad_(False)
         self.output_dim = self.model.projection_dim
 
-    def forward(self, images: Tensor) -> Tensor:
+    def forward(self, pixel_values: Tensor) -> Tensor:
         self.model.eval()
         with torch.no_grad():
-            outputs = self.model.get_image_features(pixel_values=images)
+            outputs = self.model.get_image_features(pixel_values=pixel_values)
         return extract_global_embedding(outputs)
 
 

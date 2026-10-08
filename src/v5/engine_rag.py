@@ -13,6 +13,7 @@ def _step_rag_v5(
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     pad_idx: int,
+    include_cls_token: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     # Target shift left by 1
     target_ids = input_ids[:, 1:]
@@ -22,7 +23,8 @@ def _step_rag_v5(
         rag_inputs=rag_cls_tokens,
         rag_scores=rag_score,
         input_ids=input_ids,
-        attention_mask=attention_mask
+        attention_mask=attention_mask,
+        include_cls_token=include_cls_token,
     )
 
     loss_sum = nn.functional.cross_entropy(
@@ -44,6 +46,7 @@ def train_one_epoch_rag_v5(
     accelerator: Accelerator,
     max_grad_norm: float = 1.0,
     show_progress: bool = False,
+    include_cls_token: bool = False,
 ) -> float:
     model.train()
 
@@ -63,7 +66,7 @@ def train_one_epoch_rag_v5(
         optimizer.zero_grad(set_to_none=True)
         with accelerator.autocast():
             loss_sum, num_tokens = _step_rag_v5(
-                model, visual_inputs, rag_cls_tokens, rag_score, input_ids, attention_mask, pad_idx
+                model, visual_inputs, rag_cls_tokens, rag_score, input_ids, attention_mask, pad_idx, include_cls_token
             )
      
         global_tokens = accelerator.reduce(num_tokens.detach().clone(), reduction="sum")
@@ -95,6 +98,7 @@ def evaluate_one_epoch_rag_v5(
     pad_idx: int,
     accelerator: Accelerator,
     show_progress: bool = False,
+    include_cls_token: bool = False,
 ) -> float:
     model.eval()
 
@@ -113,7 +117,7 @@ def evaluate_one_epoch_rag_v5(
 
         with accelerator.autocast():
             loss_sum, num_tokens = _step_rag_v5(
-                model, visual_inputs, rag_cls_tokens, rag_score, input_ids, attention_mask, pad_idx
+                model, visual_inputs, rag_cls_tokens, rag_score, input_ids, attention_mask, pad_idx, include_cls_token
             )
 
         reduced_loss = accelerator.reduce(loss_sum.detach(), reduction="sum")

@@ -45,11 +45,11 @@ class RagCaptionerV5(nn.Module):
     ) -> Tensor:
         """
         Tạo memory cho Decoder bằng cách nối (Concat) ảnh gốc và ảnh RAG.
-        visual_inputs: [B, 197, D] hoặc [B, 196, D]
+        visual_inputs: [B, 50, D] hoặc [B, 49, D]
         rag_inputs: [B, K, D] (với K là các CLS tokens)
         """
         if not include_cls_token:
-            # Bỏ đi CLS token của ảnh gốc (chỉ lấy 196 patches)
+            # Bỏ đi CLS token của ảnh gốc (chỉ lấy patches)
             visual_inputs = visual_inputs[:, 1:, :]
             
         target_dtype = self.visual_projector[0].weight.dtype
@@ -57,12 +57,12 @@ class RagCaptionerV5(nn.Module):
         rag_inputs = rag_inputs.to(dtype=target_dtype)
         
         # 1. Đưa cả hai về không gian d_model 
-        visual_features = self.visual_projector(visual_inputs) # [B, 196, d_model]
-        rag_features = self.visual_projector(rag_inputs)       # [B, K, d_model]
+        visual_features = self.visual_projector(visual_inputs) 
+        rag_features = self.visual_projector(rag_inputs)      
         
         # 2. Nối chuỗi! (Early Concatenation / Visual Prompting)
-        # Kết quả: [B, 196 + K, d_model]
-        memory = torch.cat([visual_features, rag_features], dim=1)
+        # Kết quả: [B, K + N, d_model]
+        memory = torch.cat([rag_features, visual_features], dim=1)
         
         return memory
 
