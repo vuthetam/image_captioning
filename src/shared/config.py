@@ -129,8 +129,9 @@ BEAM_SIZE = int(os.getenv("BEAM_SIZE", "5"))
 
 # RAG Context Encoder
 CTX_NLAYERS = int(os.getenv("CTX_NLAYERS", "2"))
-MAX_CTX_LENGTH = int(os.getenv("MAX_CTX_LENGTH", "80"))
 TOP_K_CAPTIONS = int(os.getenv("TOP_K_CAPTIONS", "4"))
+CTX_TOKENS_PER_CAPTION = int(os.getenv("CTX_TOKENS_PER_CAPTION", "22"))
+MAX_CTX_LENGTH = int(os.getenv("MAX_CTX_LENGTH", str(TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + TOP_K_CAPTIONS)))
 
 # RAG V2 Context Field Lengths
 MAX_CTX_LEN = int(os.getenv("MAX_CTX_LEN", "40"))   # Tokens của mỗi context

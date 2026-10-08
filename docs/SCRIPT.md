@@ -60,11 +60,36 @@ và `kb_text_metadata.parquet` trong thư mục KB của cùng model. Mỗi file
 truy vấn được loại khỏi kết quả. Trong tên thư mục model, `/` được thay bằng `-`
 (ví dụ `openai-clip-vit-large-patch14`).
 
-Parquet đầu ra có `imgid` của ảnh truy vấn và `imgids` là danh sách ID ảnh
+Parquet đầu ra có `imgid` của ảnh truy vấn và `retrieval_imgids` là danh sách ID ảnh
 của từng caption truy hồi, cùng thứ tự với `captions`, `tokens`, `objects`, `relations`
 và `retrieval_scores`. Một ID có thể xuất hiện nhiều lần nếu lấy nhiều caption của ảnh đó.
 
-## 5. Train, generate va evaluate bang visual features
+## 5. Train và generate V6 text RAG
+
+V6 giữ kiến trúc text RAG của V1: các caption truy hồi được encode bằng embedding
+dùng chung với decoder và một Transformer encoder, sau đó nối với visual memory.
+V6 đọc cột `tokens` đã tách sẵn từ các file RAG context hiện tại, nối các caption
+bằng `<eos>` mà không tokenize lại từ `captions`, và chuẩn hóa training loss
+theo tổng số target token hợp lệ trên tất cả process trước khi backward.
+
+Đặt một `RUN_MODE` riêng trong `.env` (ví dụ `v6_rag_l14`) để checkpoint và kết quả
+không dùng chung với các phiên bản trước, rồi chạy:
+
+```bash
+accelerate launch script/v6/train_rag.py
+accelerate launch script/v6/generate_rag_captions.py
+python script/shared/evaluate.py
+```
+
+V6 cần visual features HDF5 của ảnh gốc và các file `*_rag_contexts.parquet` được
+tạo ở bước 4. Các tham số chính là `TOP_K_CAPTIONS`, `CTX_TOKENS_PER_CAPTION`
+và `CTX_NLAYERS`. Mặc định `MAX_CTX_LENGTH` được tính bằng
+`TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + (TOP_K_CAPTIONS - 1)` để dành một
+token `<eos>` giữa mỗi cặp caption (hiện tại `4 * 22 + 3 = 91`). Vẫn có thể đặt
+trực tiếp `MAX_CTX_LENGTH` trong `.env` nếu muốn dùng một giới hạn cố định.
+Caption mục tiêu và câu sinh vẫn dùng `MAX_LENGTH=40`, độc lập với chiều dài context.
+
+## 6. Train, generate va evaluate bang visual features
 
 Sau khi da co ca ba file H5, train va sinh caption khong can doc anh hay tai
 CLIP vision encoder nua:
