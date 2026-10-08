@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.config import (
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
     TRAIN_RAG_CONTEXTS_PATH, VAL_RAG_CONTEXTS_PATH, TEST_RAG_CONTEXTS_PATH,
-    RETRIEVAL_ENCODER_MODEL , KB_FAISS_INDEX_PATH, KB_METADATA_PATH,
+    RETRIEVAL_ENCODER_MODEL , TEXT_KB_FAISS_INDEX_PATH, TEXT_KB_METADATA_PATH,
     IMAGES_DIR
 )
 from src.shared.utils import extract_global_embedding
@@ -148,11 +148,11 @@ def main():
     kb_metadata = None
     
     if accelerator.is_main_process:
-        if not KB_FAISS_INDEX_PATH.exists():
-            accelerator.print(f"Lỗi: Không tìm thấy {KB_FAISS_INDEX_PATH}")
+        if not TEXT_KB_FAISS_INDEX_PATH.exists():
+            accelerator.print(f"Lỗi: Không tìm thấy {TEXT_KB_FAISS_INDEX_PATH}")
             return
-        index = faiss.read_index(str(KB_FAISS_INDEX_PATH))
-        kb_metadata = pd.read_parquet(KB_METADATA_PATH)
+        index = faiss.read_index(str(TEXT_KB_FAISS_INDEX_PATH))
+        kb_metadata = pd.read_parquet(TEXT_KB_METADATA_PATH)
 
     datasets = [
         (TRAIN_DF_PATH, TRAIN_RAG_CONTEXTS_PATH),

@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.shared.config import TRAIN_DF_PATH, RETRIEVAL_ENCODER_MODEL , KB_FAISS_INDEX_PATH, KB_METADATA_PATH
+from src.shared.config import TRAIN_DF_PATH, RETRIEVAL_ENCODER_MODEL , TEXT_KB_FAISS_INDEX_PATH, TEXT_KB_METADATA_PATH
 from src.shared.utils import extract_global_embedding
 
 def main():
@@ -34,6 +34,7 @@ def main():
     model_kwargs = {"torch_dtype": torch.float16} if device == "cuda" else {}
     model = CLIPModel.from_pretrained(RETRIEVAL_ENCODER_MODEL , **model_kwargs).to(device)
     processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
+    max_text_length = model.config.text_config.max_position_embeddings
     model.eval()
 
     # 2. Đọc tập Train và lọc lấy các cột cần thiết cho Metadata
@@ -83,7 +84,13 @@ def main():
             batch_texts = captions[i : i + batch_size]
             
             # Tiền xử lý text
-            inputs = processor(text=batch_texts, return_tensors="pt", padding=True, truncation=True, max_length=77)
+            inputs = processor(
+                text=batch_texts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=max_text_length,
+            )
             inputs = {k: v.to(device) for k, v in inputs.items()}
             
             # Lấy text features, tương thích với nhiều phiên bản Transformers.
@@ -98,10 +105,10 @@ def main():
 
     # 5. Lưu file xuống ổ cứng
     print("\nĐang lưu Knowledge Base xuống đĩa...")
-    faiss.write_index(index, str(KB_FAISS_INDEX_PATH))
-    metadata_df.to_parquet(KB_METADATA_PATH)
+    faiss.write_index(index, str(TEXT_KB_FAISS_INDEX_PATH))
+    metadata_df.to_parquet(TEXT_KB_METADATA_PATH)
     
-    print(f"HOÀN TẤT! Đã lưu tại:\n- {KB_FAISS_INDEX_PATH}\n- {KB_METADATA_PATH}")
+    print(f"HOÀN TẤT! Đã lưu tại:\n- {TEXT_KB_FAISS_INDEX_PATH}\n- {TEXT_KB_METADATA_PATH}")
 
 if __name__ == "__main__":
     main()
