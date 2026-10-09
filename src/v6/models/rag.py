@@ -25,8 +25,11 @@ class RAGCaptionerV6(nn.Module):
         self.shared_embedding = nn.Embedding(
             vocab_size, d_model, padding_idx=pad_idx
         )
-        # Keep the V1 projection architecture: one learned linear projection.
-        self.visual_projector = nn.Linear(visual_feature_dim, d_model)
+
+        self.visual_projector = nn.Sequential(
+            nn.Linear(visual_feature_dim, d_model),
+            nn.LayerNorm(d_model),
+        )
         self.context_encoder = TextContextEncoderV6(
             d_model=d_model,
             nhead=nheads,
@@ -56,7 +59,7 @@ class RAGCaptionerV6(nn.Module):
         if not include_cls_token:
             visual_inputs = visual_inputs[:, 1:, :]
 
-        visual_inputs = visual_inputs.to(dtype=self.visual_projector.weight.dtype)
+        visual_inputs = visual_inputs.to(dtype=self.visual_projector[0].weight.dtype)
         visual_memory = self.visual_projector(visual_inputs)
         context_memory = self.context_encoder(rag_input_ids, rag_attention_mask)
         memory = torch.cat([visual_memory, context_memory], dim=1)

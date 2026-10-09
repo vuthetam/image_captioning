@@ -24,7 +24,10 @@ class RAGCaptionerV7(nn.Module):
         super().__init__()
         self.shared_embedding = nn.Embedding(vocab_size, d_model, padding_idx=pad_idx)
         # Both visual inputs come from the same frozen visual encoder.
-        self.visual_projector = nn.Linear(visual_feature_dim, d_model)
+        self.visual_projector = nn.Sequential(
+            nn.Linear(visual_feature_dim, d_model),
+            nn.LayerNorm(d_model),
+        )
         self.context_encoder = TextContextEncoderV7(
             d_model=d_model,
             nhead=nheads,
@@ -55,7 +58,7 @@ class RAGCaptionerV7(nn.Module):
         if not include_cls_token:
             visual_inputs = visual_inputs[:, 1:, :]
 
-        target_dtype = self.visual_projector.weight.dtype
+        target_dtype = self.visual_projector[0].weight.dtype
         visual_memory = self.visual_projector(visual_inputs.to(dtype=target_dtype))
         related_memory = self.visual_projector(related_cls_tokens.to(dtype=target_dtype))
         context_memory = self.context_encoder(rag_input_ids, rag_attention_mask)

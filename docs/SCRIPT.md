@@ -68,6 +68,7 @@ và `retrieval_scores`. Một ID có thể xuất hiện nhiều lần nếu l�
 
 V6 giữ kiến trúc text RAG của V1: các caption truy hồi được encode bằng embedding
 dùng chung với decoder và một Transformer encoder, sau đó nối với visual memory.
+Visual projector của V6 dùng `Linear → LayerNorm` để chuẩn hóa token ảnh trước khi nối.
 V6 đọc cột `tokens` đã tách sẵn từ các file RAG context hiện tại, nối các caption
 bằng `<eos>` mà không tokenize lại từ `captions`, và chuẩn hóa training loss
 theo tổng số target token hợp lệ trên tất cả process trước khi backward.
@@ -104,7 +105,7 @@ Memory đưa vào decoder có thứ tự:
 [patch tokens ảnh gốc, CLS tokens ảnh liên quan, caption tokens qua text encoder]
 ```
 
-Hai nhánh ảnh dùng chung Linear projector. V7 có text encoder, decoder và hàm
+Hai nhánh ảnh dùng chung projector `Linear → LayerNorm`. V7 có text encoder, decoder và hàm
 encode context riêng trong `src/v7`, không import các phiên bản trước;
 word embedding được dùng chung giữa context và decoder.
 Padding mask chỉ che các vị trí padding của caption context. Mặc định bỏ CLS của
