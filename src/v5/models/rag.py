@@ -61,8 +61,8 @@ class RagCaptionerV5(nn.Module):
         rag_features = self.visual_projector(rag_inputs)      
         
         # 2. Nối chuỗi! (Early Concatenation / Visual Prompting)
-        # Kết quả: [B, K + N, d_model]
-        memory = torch.cat([rag_features, visual_features], dim=1)
+        # Kết quả: [B, N + K, d_model]
+        memory = torch.cat([visual_features, rag_features], dim=1)
         
         return memory
 

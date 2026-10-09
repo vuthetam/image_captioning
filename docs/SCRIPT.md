@@ -84,12 +84,54 @@ python script/shared/evaluate.py
 V6 cần visual features HDF5 của ảnh gốc và các file `*_rag_contexts.parquet` được
 tạo ở bước 4. Các tham số chính là `TOP_K_CAPTIONS`, `CTX_TOKENS_PER_CAPTION`
 và `CTX_NLAYERS`. Mặc định `MAX_CTX_LENGTH` được tính bằng
-`TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + (TOP_K_CAPTIONS - 1)` để dành một
-token `<eos>` giữa mỗi cặp caption (hiện tại `4 * 22 + 3 = 91`). Vẫn có thể đặt
+`TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + TOP_K_CAPTIONS` (hiện tại `4 * 22 + 4 = 92`).
+Context chèn `<eos>` giữa các caption; đây là giới hạn tổng chiều dài, không bắt buộc
+mỗi caption phải đủ 22 token. Vẫn có thể đặt
 trực tiếp `MAX_CTX_LENGTH` trong `.env` nếu muốn dùng một giới hạn cố định.
 Caption mục tiêu và câu sinh vẫn dùng `MAX_LENGTH=40`, độc lập với chiều dài context.
 
-## 6. Train, generate va evaluate bang visual features
+## 6. Train và generate V7 kết hợp ảnh và caption
+
+V7 chọn độc lập các ảnh liên quan tốt nhất và các caption tốt nhất từ hai file
+`*_related_images.parquet` và `*_rag_contexts.parquet` hiện có. Không yêu cầu caption
+phải thuộc các ảnh liên quan đã chọn, và không cần gộp hai knowledge base.
+Nếu chưa có kết quả truy hồi ảnh, tạo image KB bằng
+`python script/shared/build_image_kb.py`, rồi chạy `python script/v5/build_related_images.py`.
+
+Memory đưa vào decoder có thứ tự:
+
+```text
+[patch tokens ảnh gốc, CLS tokens ảnh liên quan, caption tokens qua text encoder]
+```
+
+Hai nhánh ảnh dùng chung Linear projector. V7 có text encoder, decoder và hàm
+encode context riêng trong `src/v7`, không import các phiên bản trước;
+word embedding được dùng chung giữa context và decoder.
+Padding mask chỉ che các vị trí padding của caption context. Mặc định bỏ CLS của
+ảnh gốc; có thể bật qua `include_cls_token` khi gọi model, engine hoặc inference.
+
+Đặt `RUN_MODE=v7_rag_l14` trong `.env`, rồi chạy:
+
+```bash
+accelerate launch script/v7/train_rag.py
+accelerate launch script/v7/generate_rag_captions.py
+python script/shared/evaluate.py
+```
+
+Script yêu cầu `RUN_MODE` bắt đầu bằng `v7` để tách checkpoint khỏi các phiên bản cũ.
+`TOP_K_RAG_IMAGES` điều khiển số CLS ảnh liên quan, còn `TOP_K_CAPTIONS` điều khiển
+số caption. Hai giá trị độc lập và không được vượt số kết quả có trong parquet.
+Với visual features B/32, K ảnh = 4 và context length = 92, memory có
+`49 + 4 + 92 = 145` vị trí, tính cả padding context.
+
+Cần visual features của ảnh gốc theo từng split và `train_visual_features.h5`
+để đọc CLS ảnh liên quan, kể cả khi validation hoặc generate trên tập test.
+Các visual features phải được trích bằng cùng `VISUAL_ENCODER_MODEL`;
+image embeddings dùng cho retrieval không thay thế được visual features này.
+Training loss được chuẩn hóa theo tổng số target token hợp lệ trên tất cả process
+trước khi backward như V6.
+
+## 7. Train, generate va evaluate bang visual features
 
 Sau khi da co ca ba file H5, train va sinh caption khong can doc anh hay tai
 CLIP vision encoder nua:
