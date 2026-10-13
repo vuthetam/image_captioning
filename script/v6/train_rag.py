@@ -1,9 +1,11 @@
 """Train the standardized V1-style text-RAG captioner."""
 
 import os
+import random
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 from accelerate import Accelerator
@@ -47,6 +49,12 @@ from src.v6.engine_rag import evaluate_one_epoch, train_one_epoch
 from src.v6.models.rag import RAGCaptionerV6
 
 
+def seed_worker(worker_id: int) -> None:
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 def main() -> None:
     accelerator = Accelerator()
     set_seed(42)
@@ -72,6 +80,8 @@ def main() -> None:
         MAX_CTX_LENGTH,
         TOP_K_CAPTIONS,
     )
+    train_generator = torch.Generator()
+    train_generator.manual_seed(42)
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
@@ -79,6 +89,8 @@ def main() -> None:
         num_workers=NUM_WORKERS,
         pin_memory=True,
         drop_last=True,
+        worker_init_fn=seed_worker,
+        generator=train_generator,
     )
     val_loader = DataLoader(
         val_dataset,
