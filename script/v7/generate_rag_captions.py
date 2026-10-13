@@ -1,5 +1,6 @@
 """Generate captions with independently retrieved image and text contexts."""
 
+import argparse
 import os
 import json
 import sys
@@ -41,10 +42,10 @@ from src.shared.config import (
 from src.shared.vocabulary import Vocabulary
 from src.v7.dataset import RAGFeatureDataset
 from src.v7.inference_rag import generate_captions
-from src.v7.models.rag import RAGCaptionerV7
+from src.v7.models import RAGCaptionerV7, RAGCaptionerV7NoInputImage
 
 
-def main() -> None:
+def main(no_input_image: bool = False) -> None:
     accelerator = Accelerator()
     set_seed(42)
 
@@ -53,7 +54,7 @@ def main() -> None:
     test_dataset = RAGFeatureDataset(
         df=test_df,
         vocab=vocab,
-        features_path=TEST_VISUAL_FEATURES_PATH,
+        features_path=None if no_input_image else TEST_VISUAL_FEATURES_PATH,
         related_features_path=TRAIN_VISUAL_FEATURES_PATH,
         rag_contexts_path=TEST_RAG_CONTEXTS_PATH,
         related_images_path=TEST_RELATED_IMAGES_PATH,
@@ -68,7 +69,8 @@ def main() -> None:
         num_workers=NUM_WORKERS,
         pin_memory=True,
     )
-    model = RAGCaptionerV7(
+    model_class = RAGCaptionerV7NoInputImage if no_input_image else RAGCaptionerV7
+    model = model_class(
         vocab_size=len(vocab),
         d_model=DMODEL,
         nheads=NHEADS,
@@ -86,7 +88,7 @@ def main() -> None:
     epoch, _, best_val_loss = load_checkpoint(
         BEST_CHECKPOINT_PATH, model, device=accelerator.device
     )
-    accelerator.print(f"Loaded checkpoint from epoch {epoch}; best val loss: {best_val_loss}")
+    accelerator.print(f"model={model_class.__name__}; run mode={RUN_MODE}; loaded epoch {epoch}; best val loss: {best_val_loss}")
 
     model, test_loader = accelerator.prepare(model, test_loader)
     caption_dict = generate_captions(
@@ -116,4 +118,7 @@ def main() -> None:
     os._exit(0)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--no-input-image", action="store_true", help="Use only related-image CLS tokens and retrieved captions as decoder memory.")
+    args = parser.parse_args()
+    main(no_input_image=args.no_input_image)

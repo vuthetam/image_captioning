@@ -1,5 +1,6 @@
 """Train V7 with independently retrieved images and caption contexts."""
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -48,10 +49,10 @@ from src.shared.utils import trainable_parameters
 from src.shared.vocabulary import Vocabulary
 from src.v7.dataset import RAGFeatureCaptionDataset
 from src.v7.engine_rag import evaluate_one_epoch, train_one_epoch
-from src.v7.models.rag import RAGCaptionerV7
+from src.v7.models import RAGCaptionerV7, RAGCaptionerV7NoInputImage
 
 
-def main() -> None:
+def main(no_input_image: bool = False) -> None:
     accelerator = Accelerator()
     set_seed(42)
 
@@ -61,7 +62,7 @@ def main() -> None:
     train_dataset = RAGFeatureCaptionDataset(
         df=train_df,
         vocab=vocab,
-        features_path=TRAIN_VISUAL_FEATURES_PATH,
+        features_path=None if no_input_image else TRAIN_VISUAL_FEATURES_PATH,
         related_features_path=TRAIN_VISUAL_FEATURES_PATH,
         rag_contexts_path=TRAIN_RAG_CONTEXTS_PATH,
         related_images_path=TRAIN_RELATED_IMAGES_PATH,
@@ -73,7 +74,7 @@ def main() -> None:
     val_dataset = RAGFeatureCaptionDataset(
         df=val_df,
         vocab=vocab,
-        features_path=VAL_VISUAL_FEATURES_PATH,
+        features_path=None if no_input_image else VAL_VISUAL_FEATURES_PATH,
         related_features_path=TRAIN_VISUAL_FEATURES_PATH,
         rag_contexts_path=VAL_RAG_CONTEXTS_PATH,
         related_images_path=VAL_RELATED_IMAGES_PATH,
@@ -98,7 +99,8 @@ def main() -> None:
         pin_memory=True,
     )
 
-    model = RAGCaptionerV7(
+    model_class = RAGCaptionerV7NoInputImage if no_input_image else RAGCaptionerV7
+    model = model_class(
         vocab_size=len(vocab),
         d_model=DMODEL,
         nheads=NHEADS,
@@ -128,6 +130,7 @@ def main() -> None:
         model, optimizer, train_loader, val_loader
     )
     accelerator.print(
+        f"model={model_class.__name__}; run mode={RUN_MODE}; "
         f"train rows={len(train_dataset):,}; val rows={len(val_dataset):,}; "
         f"feature shape={train_dataset.feature_shape}; trainable params="
         f"{sum(parameter.numel() for parameter in trainable_parameters(model)):,}; "
@@ -174,4 +177,7 @@ def main() -> None:
     os._exit(0)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--no-input-image", action="store_true", help="Use only related-image CLS tokens and retrieved captions as decoder memory.")
+    args = parser.parse_args()
+    main(no_input_image=args.no_input_image)

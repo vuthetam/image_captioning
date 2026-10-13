@@ -132,6 +132,33 @@ image embeddings dùng cho retrieval không thay thế được visual features 
 Training loss được chuẩn hóa theo tổng số target token hợp lệ trên tất cả process
 trước khi backward như V6.
 
+### V7 không dùng đặc trưng ảnh đầu vào
+
+Biến thể `RAGCaptionerV7NoInputImage` trong `src/v7/models/rag_no_input_image.py`
+chỉ đưa CLS token của ảnh liên quan và token caption đã qua Transformer encoder
+vào memory của decoder:
+
+```text
+[CLS tokens ảnh liên quan, caption tokens qua text encoder]
+```
+
+Đặt `RUN_MODE=v7_rag_no_input_image` trong `.env` để huấn luyện từ đầu với
+checkpoint và kết quả riêng, rồi dùng cùng tùy chọn cho train và generate:
+
+```bash
+accelerate launch script/v7/train_rag.py --no-input-image
+accelerate launch script/v7/generate_rag_captions.py --no-input-image
+python script/shared/evaluate.py
+```
+
+Biến thể này không đọc visual features của ảnh đầu vào. Vẫn cần
+`train_visual_features.h5` để lấy CLS của các ảnh liên quan và các file kết quả
+truy hồi ảnh/caption của từng split. Ảnh đầu vào vẫn quyết định kết quả truy hồi;
+đặc trưng của ảnh đó không được đưa trực tiếp vào model sinh caption.
+Với K ảnh = 4 và context length = 92, memory có `4 + 92 = 96` vị trí,
+tính cả padding context. Projector, text encoder và decoder giữ cùng cấu trúc
+với V7 để so sánh ảnh hưởng của việc bỏ nhánh ảnh đầu vào.
+
 ## 7. Train, generate va evaluate bang visual features
 
 Sau khi da co ca ba file H5, train va sinh caption khong can doc anh hay tai

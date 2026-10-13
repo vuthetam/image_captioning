@@ -42,7 +42,7 @@ class RAGFeatureDataset(Dataset):
         self,
         df: pd.DataFrame,
         vocab: Vocabulary,
-        features_path: str | Path,
+        features_path: str | Path | None,
         related_features_path: str | Path,
         rag_contexts_path: str | Path,
         related_images_path: str | Path,
@@ -58,12 +58,12 @@ class RAGFeatureDataset(Dataset):
         if top_k_captions < 1 or top_k_images < 1 or max_context_length < 1:
             raise ValueError("Retrieval K values and max_context_length must be positive.")
 
-        self.feature_store = H5FeatureStore(features_path)
-        if Path(features_path).resolve() == Path(related_features_path).resolve():
+        self.feature_store = H5FeatureStore(features_path) if features_path is not None else None
+        if features_path is not None and Path(features_path).resolve() == Path(related_features_path).resolve():
             self.related_store = self.feature_store
         else:
             self.related_store = H5FeatureStore(related_features_path)
-        if self.feature_store.feature_shape[-1] != self.related_store.feature_shape[-1]:
+        if self.feature_store is not None and self.feature_store.feature_shape[-1] != self.related_store.feature_shape[-1]:
             raise ValueError("Original and related visual features must have the same dimension.")
 
         rag_df = pd.read_parquet(rag_contexts_path, columns=["imgid", "tokens"])
@@ -75,14 +75,16 @@ class RAGFeatureDataset(Dataset):
 
     @property
     def feature_shape(self) -> tuple[int, ...]:
-        return self.feature_store.feature_shape
+        feature_store = self.feature_store if self.feature_store is not None else self.related_store
+        return feature_store.feature_shape
 
     def __len__(self) -> int:
         return len(self.dataframe)
 
     def __getitem__(self, index: int):
         imgid = int(self.dataframe.iloc[index]["imgid"])
-        visual_features = self.feature_store.get_feature(imgid)
+        # An empty slot preserves the batch format when the input-image branch is absent.
+        visual_features = self.feature_store.get_feature(imgid) if self.feature_store is not None else torch.empty(0, self.feature_shape[-1])
         related_imgids = self.related_lookup[imgid][:self.top_k_images]
         if len(related_imgids) != self.top_k_images:
             raise ValueError(f"Image {imgid} has fewer than {self.top_k_images} related images.")
@@ -100,7 +102,7 @@ class RAGFeatureCaptionDataset(RAGFeatureDataset):
         self,
         df: pd.DataFrame,
         vocab: Vocabulary,
-        features_path: str | Path,
+        features_path: str | Path | None,
         related_features_path: str | Path,
         rag_contexts_path: str | Path,
         related_images_path: str | Path,
