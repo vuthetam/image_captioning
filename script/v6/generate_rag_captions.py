@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import torch
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
 
@@ -34,7 +33,7 @@ from src.shared.config import (
     TOP_K_CAPTIONS,
     VOCAB_PATH,
 )
-from src.shared.utils import setup_reproducibility
+from src.shared.utils import log_reproducibility, setup_reproducibility
 from src.shared.vocabulary import Vocabulary
 from src.v6.dataset import RAGFeatureDataset
 from src.v6.inference_rag import generate_captions
@@ -44,14 +43,7 @@ from src.v6.models.rag import RAGCaptionerV6
 def main() -> None:
     setup_reproducibility(42)
     accelerator = Accelerator()
-    accelerator.print(
-        f"seed=42; deterministic={torch.are_deterministic_algorithms_enabled()}; "
-        f"cudnn benchmark={torch.backends.cudnn.benchmark}; "
-        f"cudnn deterministic={torch.backends.cudnn.deterministic}; "
-        f"cuBLAS workspace={os.environ['CUBLAS_WORKSPACE_CONFIG']}; "
-        f"torch={torch.__version__}; CUDA={torch.version.cuda}; "
-        f"processes={accelerator.num_processes}; precision={accelerator.mixed_precision}"
-    )
+    log_reproducibility(accelerator, 42)
 
     test_df = pd.read_parquet(TEST_DF_PATH)
     vocab = Vocabulary.load(VOCAB_PATH)

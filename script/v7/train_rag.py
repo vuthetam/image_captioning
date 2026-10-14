@@ -8,7 +8,6 @@ from pathlib import Path
 import pandas as pd
 import torch
 from accelerate import Accelerator
-from accelerate.utils import set_seed
 from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -45,7 +44,13 @@ from src.shared.config import (
     VOCAB_PATH,
     WEIGHT_DECAY,
 )
-from src.shared.utils import trainable_parameters
+from src.shared.utils import (
+    create_seeded_generator,
+    log_reproducibility,
+    seed_worker,
+    setup_reproducibility,
+    trainable_parameters,
+)
 from src.shared.vocabulary import Vocabulary
 from src.v7.dataset import RAGFeatureCaptionDataset
 from src.v7.engine_rag import evaluate_one_epoch, train_one_epoch
@@ -53,8 +58,9 @@ from src.v7.models import RAGCaptionerV7, RAGCaptionerV7NoInputImage
 
 
 def main(no_input_image: bool = False) -> None:
+    setup_reproducibility(42)
     accelerator = Accelerator()
-    set_seed(42)
+    log_reproducibility(accelerator, 42)
 
     train_df = pd.read_parquet(TRAIN_DF_PATH)
     val_df = pd.read_parquet(VAL_DF_PATH)
@@ -83,6 +89,7 @@ def main(no_input_image: bool = False) -> None:
         top_k_captions=TOP_K_CAPTIONS,
         top_k_images=TOP_K_RAG_IMAGES,
     )
+    train_generator = create_seeded_generator(42)
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
@@ -90,6 +97,8 @@ def main(no_input_image: bool = False) -> None:
         num_workers=NUM_WORKERS,
         pin_memory=True,
         drop_last=True,
+        worker_init_fn=seed_worker,
+        generator=train_generator,
     )
     val_loader = DataLoader(
         val_dataset,

@@ -41,6 +41,7 @@ from src.shared.config import (
 )
 from src.shared.utils import (
     create_seeded_generator,
+    log_reproducibility,
     seed_worker,
     setup_reproducibility,
     trainable_parameters,
@@ -54,14 +55,7 @@ from src.v6.models.rag import RAGCaptionerV6
 def main() -> None:
     setup_reproducibility(42)
     accelerator = Accelerator()
-    accelerator.print(
-        f"seed=42; deterministic={torch.are_deterministic_algorithms_enabled()}; "
-        f"cudnn benchmark={torch.backends.cudnn.benchmark}; "
-        f"cudnn deterministic={torch.backends.cudnn.deterministic}; "
-        f"cuBLAS workspace={os.environ['CUBLAS_WORKSPACE_CONFIG']}; "
-        f"torch={torch.__version__}; CUDA={torch.version.cuda}; "
-        f"processes={accelerator.num_processes}; precision={accelerator.mixed_precision}"
-    )
+    log_reproducibility(accelerator, 42)
 
     train_df = pd.read_parquet(TRAIN_DF_PATH)
     val_df = pd.read_parquet(VAL_DF_PATH)

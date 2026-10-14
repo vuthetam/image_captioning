@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 from accelerate import Accelerator
-from accelerate.utils import set_seed
 from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +38,7 @@ from src.shared.config import (
     TRAIN_VISUAL_FEATURES_PATH,
     VOCAB_PATH,
 )
+from src.shared.utils import log_reproducibility, setup_reproducibility
 from src.shared.vocabulary import Vocabulary
 from src.v7.dataset import RAGFeatureDataset
 from src.v7.inference_rag import generate_captions
@@ -46,8 +46,9 @@ from src.v7.models import RAGCaptionerV7, RAGCaptionerV7NoInputImage
 
 
 def main(no_input_image: bool = False) -> None:
+    setup_reproducibility(42)
     accelerator = Accelerator()
-    set_seed(42)
+    log_reproducibility(accelerator, 42)
 
     test_df = pd.read_parquet(TEST_DF_PATH)
     vocab = Vocabulary.load(VOCAB_PATH)

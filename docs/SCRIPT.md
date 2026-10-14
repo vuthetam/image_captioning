@@ -2,6 +2,15 @@
 
 Chạy các lệnh từ thư mục gốc của project. Cần có dataset MS COCO và cấu hình đường dẫn trong `.env` hoặc dùng giá trị mặc định trong `src/config.py`.
 
+Tên script sinh caption thống nhất theo dạng `generate_<loại>_captions.py`:
+
+| Phiên bản | Script |
+| --- | --- |
+| V1 baseline | `script/v1/generate_baseline_captions.py` |
+| V1 online | `script/v1/generate_online_captions.py` |
+| V4 baseline | `script/v4/generate_baseline_captions.py` |
+| RAG V1–V7 | `script/v<version>/generate_rag_captions.py` |
+
 ## 1. Chuẩn bị dữ liệu
 
 ```bash
@@ -82,15 +91,17 @@ accelerate launch script/v6/generate_rag_captions.py
 python script/shared/evaluate.py
 ```
 
-Train và generate V6 gọi `setup_reproducibility(42)` trong `src/shared/utils.py`.
+Train và generate V4 baseline, V4 RAG, V5, V6 và V7 (cả biến thể `--no-input-image`)
+đều gọi `setup_reproducibility(42)` trong `src/shared/utils.py`.
 Hàm đặt seed bằng `set_seed(42)` và bật chế độ tính toán xác định với
 `torch.use_deterministic_algorithms(True)`, `torch.backends.cudnn.benchmark=False`
 và `torch.backends.cudnn.deterministic=True`.
-Hàm tự đặt `CUBLAS_WORKSPACE_CONFIG=:4096:8` trước khi đặt seed. Cả hai script gọi
+Hàm tự đặt `CUBLAS_WORKSPACE_CONFIG=:4096:8` trước khi đặt seed. Các script gọi
 hàm trước khi tạo `Accelerator` hoặc thực hiện phép tính CUDA, nên không cần đặt
 biến này thủ công trong notebook Kaggle. Khi khởi động, log ghi
 seed, các cờ xác định, phiên bản PyTorch/CUDA, số process và precision để đối chiếu.
-DataLoader train dùng `seed_worker` và generator riêng từ `create_seeded_generator(42)`;
+DataLoader train của các phiên bản này dùng `seed_worker` và generator riêng từ
+`create_seeded_generator(42)`;
 cả hai helper cũng nằm trong `src/shared/utils.py`.
 
 Để kiểm tra tính lặp lại, dùng cùng code, dữ liệu, hyperparameter, phiên bản thư viện,
@@ -182,9 +193,11 @@ với V7 để so sánh ảnh hưởng của việc bỏ nhánh ảnh đầu và
 Sau khi da co ca ba file H5, train va sinh caption khong can doc anh hay tai
 CLIP vision encoder nua:
 
+Ví dụ V1 baseline, đặt `RUN_MODE=baseline_precomputed` trong `.env`, rồi chạy:
+
 ```bash
-RUN_MODE=baseline_precomputed /home/tam/Link\ to\ workspace/ML/.venv/bin/accelerate launch script/train_precomputed_features.py
-RUN_MODE=baseline_precomputed /home/tam/Link\ to\ workspace/ML/.venv/bin/accelerate launch script/generate_precomputed_captions.py
+accelerate launch script/v1/train.py
+accelerate launch script/v1/generate_baseline_captions.py
 ```
 
 Hai lenh phai dung cung `RUN_MODE` de dung chung checkpoint. `RUN_MODE` moi

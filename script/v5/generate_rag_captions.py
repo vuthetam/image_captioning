@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pandas as pd
 from accelerate import Accelerator
-from accelerate.utils import set_seed
 from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -26,29 +25,32 @@ from src.shared.config import (
     PREDICTIONS_PATH,
     TEST_DF_PATH,
     TEST_VISUAL_FEATURES_PATH,
-    VOCAB_PATH,
-    TOP_K_RAG_IMAGES,
     TEST_RELATED_IMAGES_PATH,
     TRAIN_VISUAL_FEATURES_PATH,
+    VOCAB_PATH,
+    TOP_K_RAG_IMAGES,
 )
-from src.v4.dataset import FeatureDatasetV4_RAG
-from src.v4.inference_rag import generate_captions_rag_v4
-from src.v4.models.rag import RagCaptionerV4
+from src.v5.dataset import FeatureDatasetV5_RAG
+from src.v5.inference_rag import generate_captions_rag_v5
+from src.v5.models.rag import RagCaptionerV5
+from src.shared.utils import log_reproducibility, setup_reproducibility
 from src.shared.vocabulary import Vocabulary
 
 
 def main() -> None:
+    setup_reproducibility(42)
     accelerator = Accelerator()
-    set_seed(42)
+    log_reproducibility(accelerator, 42)
     test_df = pd.read_parquet(TEST_DF_PATH)
+    test_related_df = pd.read_parquet(TEST_RELATED_IMAGES_PATH)
     vocab = Vocabulary.load(VOCAB_PATH)
     
-    test_dataset = FeatureDatasetV4_RAG(
+    test_dataset = FeatureDatasetV5_RAG(
         df=test_df, 
-        related_df=pd.read_parquet(TEST_RELATED_IMAGES_PATH),
-        features_path=TEST_VISUAL_FEATURES_PATH,
+        related_df=test_related_df,
+        visual_features_path=TEST_VISUAL_FEATURES_PATH,
         rag_features_path=TRAIN_VISUAL_FEATURES_PATH,
-        top_k=TOP_K_RAG_IMAGES,
+        top_k=TOP_K_RAG_IMAGES
     )
     
     test_loader = DataLoader(
@@ -59,7 +61,7 @@ def main() -> None:
         pin_memory=True,
     )
 
-    model = RagCaptionerV4(
+    model = RagCaptionerV5(
         vocab_size=len(vocab),
         d_model=DMODEL,
         nheads=NHEADS,
@@ -72,10 +74,11 @@ def main() -> None:
     if not BEST_CHECKPOINT_PATH.is_file():
         raise FileNotFoundError(f"Không tìm thấy checkpoint: {BEST_CHECKPOINT_PATH}")
         
-    load_checkpoint(BEST_CHECKPOINT_PATH, model, device=accelerator.device)
+    epoch, _, _ = load_checkpoint(BEST_CHECKPOINT_PATH, model, device=accelerator.device)
+    accelerator.print(f"Đã nạp epoch {epoch}")
 
     model, test_loader = accelerator.prepare(model, test_loader)
-    caption_dict = generate_captions_rag_v4(
+    caption_dict = generate_captions_rag_v5(
         model, test_loader, vocab, BEAM_SIZE, MAX_LENGTH, accelerator, show_progress=True, include_cls_token=False
     )
 

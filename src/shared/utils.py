@@ -33,6 +33,18 @@ def create_seeded_generator(seed: int = 42) -> torch.Generator:
     return generator
 
 
+def log_reproducibility(accelerator, seed: int = 42) -> None:
+    """Log the active reproducibility and execution settings on the main process."""
+    accelerator.print(
+        f"seed={seed}; deterministic={torch.are_deterministic_algorithms_enabled()}; "
+        f"cudnn benchmark={torch.backends.cudnn.benchmark}; "
+        f"cudnn deterministic={torch.backends.cudnn.deterministic}; "
+        f"cuBLAS workspace={os.environ['CUBLAS_WORKSPACE_CONFIG']}; "
+        f"torch={torch.__version__}; CUDA={torch.version.cuda}; "
+        f"processes={accelerator.num_processes}; precision={accelerator.mixed_precision}"
+    )
+
+
 def trainable_parameters(*modules: nn.Module):
     """Yield all parameters that require gradients across the given modules."""
     seen = set()

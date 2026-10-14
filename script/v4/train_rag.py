@@ -6,7 +6,6 @@ from pathlib import Path
 import pandas as pd
 import torch
 from accelerate import Accelerator
-from accelerate.utils import set_seed
 from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -40,13 +39,20 @@ from src.shared.config import (
 from src.v4.dataset import FeatureCaptionDatasetV4_RAG
 from src.v4.engine_rag import evaluate_one_epoch_rag_v4, train_one_epoch_rag_v4
 from src.v4.models.rag import RagCaptionerV4
-from src.shared.utils import trainable_parameters
+from src.shared.utils import (
+    create_seeded_generator,
+    log_reproducibility,
+    seed_worker,
+    setup_reproducibility,
+    trainable_parameters,
+)
 from src.shared.vocabulary import Vocabulary
 
 
 def main() -> None:
+    setup_reproducibility(42)
     accelerator = Accelerator()
-    set_seed(42)
+    log_reproducibility(accelerator, 42)
 
     train_df = pd.read_parquet(TRAIN_DF_PATH)
     val_df = pd.read_parquet(VAL_DF_PATH)
@@ -71,6 +77,7 @@ def main() -> None:
         top_k=TOP_K_RAG_IMAGES,
     )
 
+    train_generator = create_seeded_generator(42)
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
@@ -78,6 +85,8 @@ def main() -> None:
         num_workers=NUM_WORKERS,
         pin_memory=True,
         drop_last=True,
+        worker_init_fn=seed_worker,
+        generator=train_generator,
     )
     val_loader = DataLoader(
         val_dataset,
