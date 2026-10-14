@@ -1,5 +1,36 @@
+import os
+import random
+
+import numpy as np
 import torch
+from accelerate.utils import set_seed
 from torch import nn
+
+
+def setup_reproducibility(seed: int = 42) -> None:
+    """Seed RNGs and enable deterministic algorithms before model setup.
+
+    Call before constructing Accelerator or running any CUDA operations.
+    """
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    set_seed(seed)
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+
+def seed_worker(worker_id: int) -> None:
+    """Seed NumPy and Python RNGs using the DataLoader worker's Torch seed."""
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
+def create_seeded_generator(seed: int = 42) -> torch.Generator:
+    """Create an independent seeded generator for a DataLoader."""
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    return generator
 
 
 def trainable_parameters(*modules: nn.Module):

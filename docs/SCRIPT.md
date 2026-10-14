@@ -82,6 +82,24 @@ accelerate launch script/v6/generate_rag_captions.py
 python script/shared/evaluate.py
 ```
 
+Train và generate V6 gọi `setup_reproducibility(42)` trong `src/shared/utils.py`.
+Hàm đặt seed bằng `set_seed(42)` và bật chế độ tính toán xác định với
+`torch.use_deterministic_algorithms(True)`, `torch.backends.cudnn.benchmark=False`
+và `torch.backends.cudnn.deterministic=True`.
+Hàm tự đặt `CUBLAS_WORKSPACE_CONFIG=:4096:8` trước khi đặt seed. Cả hai script gọi
+hàm trước khi tạo `Accelerator` hoặc thực hiện phép tính CUDA, nên không cần đặt
+biến này thủ công trong notebook Kaggle. Khi khởi động, log ghi
+seed, các cờ xác định, phiên bản PyTorch/CUDA, số process và precision để đối chiếu.
+DataLoader train dùng `seed_worker` và generator riêng từ `create_seeded_generator(42)`;
+cả hai helper cũng nằm trong `src/shared/utils.py`.
+
+Để kiểm tra tính lặp lại, dùng cùng code, dữ liệu, hyperparameter, phiên bản thư viện,
+số GPU/process và precision; mỗi lần train từ đầu dùng một `RUN_MODE` mới để tránh
+resume checkpoint. Nếu gặp phép toán không hỗ trợ chế độ xác định, script sẽ báo
+`RuntimeError`; cần xử lý phép toán đó thay vì bỏ qua lỗi hoặc chỉ bật cảnh báo.
+Chế độ này có thể làm train chậm hơn và không bảo đảm kết quả giống hệt giữa các
+phiên bản PyTorch hay môi trường khác nhau.
+
 V6 cần visual features HDF5 của ảnh gốc và các file `*_rag_contexts.parquet` được
 tạo ở bước 4. Các tham số chính là `TOP_K_CAPTIONS`, `CTX_TOKENS_PER_CAPTION`
 và `CTX_NLAYERS`. Mặc định `MAX_CTX_LENGTH` được tính bằng

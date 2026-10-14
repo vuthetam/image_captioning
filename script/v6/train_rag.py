@@ -1,15 +1,12 @@
 """Train the standardized V1-style text-RAG captioner."""
 
 import os
-import random
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import torch
 from accelerate import Accelerator
-from accelerate.utils import set_seed
 from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -42,22 +39,29 @@ from src.shared.config import (
     VOCAB_PATH,
     WEIGHT_DECAY,
 )
-from src.shared.utils import trainable_parameters
+from src.shared.utils import (
+    create_seeded_generator,
+    seed_worker,
+    setup_reproducibility,
+    trainable_parameters,
+)
 from src.shared.vocabulary import Vocabulary
 from src.v6.dataset import RAGFeatureCaptionDataset
 from src.v6.engine_rag import evaluate_one_epoch, train_one_epoch
 from src.v6.models.rag import RAGCaptionerV6
 
 
-def seed_worker(worker_id: int) -> None:
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
 def main() -> None:
+    setup_reproducibility(42)
     accelerator = Accelerator()
-    set_seed(42)
+    accelerator.print(
+        f"seed=42; deterministic={torch.are_deterministic_algorithms_enabled()}; "
+        f"cudnn benchmark={torch.backends.cudnn.benchmark}; "
+        f"cudnn deterministic={torch.backends.cudnn.deterministic}; "
+        f"cuBLAS workspace={os.environ['CUBLAS_WORKSPACE_CONFIG']}; "
+        f"torch={torch.__version__}; CUDA={torch.version.cuda}; "
+        f"processes={accelerator.num_processes}; precision={accelerator.mixed_precision}"
+    )
 
     train_df = pd.read_parquet(TRAIN_DF_PATH)
     val_df = pd.read_parquet(VAL_DF_PATH)
@@ -80,8 +84,7 @@ def main() -> None:
         MAX_CTX_LENGTH,
         TOP_K_CAPTIONS,
     )
-    train_generator = torch.Generator()
-    train_generator.manual_seed(42)
+    train_generator = create_seeded_generator(42)
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
