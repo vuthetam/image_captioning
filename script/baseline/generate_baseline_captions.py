@@ -1,0 +1,91 @@
+"""Generate baseline test captions from pre-extracted CLIP visual-token HDF5 files."""
+
+import json
+import sys
+import os
+from pathlib import Path
+
+import pandas as pd
+from accelerate import Accelerator
+from torch.utils.data import DataLoader
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.shared.checkpoint import load_checkpoint
+from src.shared.config import (
+    BATCH_SIZE,
+    BEAM_SIZE,
+    BEST_CHECKPOINT_PATH,
+    DMODEL,
+    DROPOUT,
+    MAX_LENGTH,
+    NHEADS,
+    NLAYERS,
+    NUM_WORKERS,
+    PREDICTIONS_PATH,
+    TEST_DF_PATH,
+    TEST_VISUAL_FEATURES_PATH,
+    VOCAB_PATH,
+)
+from src.baseline.dataset import FeatureDataset
+from src.baseline.inference import generate_captions
+from src.baseline.models.baseline import BaselineCaptioner
+from src.shared.utils import log_reproducibility, setup_reproducibility
+from src.shared.vocabulary import Vocabulary
+
+
+def main() -> None:
+    setup_reproducibility(42)
+    accelerator = Accelerator()
+    log_reproducibility(accelerator, 42)
+    test_df = pd.read_parquet(TEST_DF_PATH)
+    vocab = Vocabulary.load(VOCAB_PATH)
+    test_dataset = FeatureDataset(test_df, TEST_VISUAL_FEATURES_PATH)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=NUM_WORKERS,
+        pin_memory=True,
+    )
+
+    model = BaselineCaptioner(
+        vocab_size=len(vocab),
+        d_model=DMODEL,
+        nheads=NHEADS,
+        nlayers=NLAYERS,
+        dropout=DROPOUT,
+        max_length=MAX_LENGTH,
+        pad_idx=vocab.pad_idx(),
+        visual_feature_dim=test_dataset.feature_shape[-1],
+    )
+    if not BEST_CHECKPOINT_PATH.is_file():
+        raise FileNotFoundError(f"Không tìm thấy checkpoint: {BEST_CHECKPOINT_PATH}")
+    load_checkpoint(BEST_CHECKPOINT_PATH, model, device=accelerator.device)
+
+    model, test_loader = accelerator.prepare(model, test_loader)
+    caption_dict = generate_captions(
+        model, test_loader, vocab, BEAM_SIZE, MAX_LENGTH, accelerator, show_progress=True, include_cls_token=False
+    )
+
+    if accelerator.is_main_process:
+        predictions = [
+            {"imgid": int(imgid), "caption": " ".join(caption_dict[imgid])}
+            for imgid in test_df["imgid"]
+        ]
+        PREDICTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with PREDICTIONS_PATH.open("w", encoding="utf-8") as output_file:
+            json.dump(predictions, output_file, ensure_ascii=False, indent=2)
+        accelerator.print(f"Saved {len(predictions):,} captions to {PREDICTIONS_PATH}")
+        
+    # Ép Kaggle/Jupyter kết thúc tiến trình
+    accelerator.wait_for_everyone()
+    sys.stdout.flush()
+    os._exit(0)
+
+
+if __name__ == "__main__":
+    main()
+

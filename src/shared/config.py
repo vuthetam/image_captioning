@@ -1,58 +1,36 @@
+"""Shared configuration for baseline, image, text and multimodal RAG runs."""
+
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
+
+def safe_mkdir(path: Path) -> None:
+    """Create an output directory when writable, including on Kaggle."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+
 # ==========================================
-# 1. ROOT & ENVIRONMENT
+# 1. PROJECT & ENVIRONMENT
 # ==========================================
 ROOT_PATH = Path(__file__).resolve().parent.parent.parent
 ROOT_DIR = ROOT_PATH
 ENV_PATH = ROOT_PATH / ".env"
 
 if ENV_PATH.exists():
-    # Thêm override=True để Python luôn đọc file .env mới nhất, bỏ qua cache của Terminal
+    # Values in .env take precedence over the current process environment.
     load_dotenv(ENV_PATH, override=True)
 
-RUN_MODE = os.getenv("RUN_MODE", "baseline")  # 'baseline' hoặc 'rag'
+# Experiment identifier used for both results and checkpoints.
+RUN_MODE = os.getenv("RUN_MODE", "baseline")
+
 
 # ==========================================
-# 2. DATASET PATHS (Inputs)
-# ==========================================
-DATASET_COCO_PATH = Path(
-    os.getenv("DATASET_COCO_PATH", str(ROOT_PATH / "dataset" / "mscoco" / "dataset_coco.json"))
-)
-IMAGES_DIR = Path(
-    os.getenv("IMAGES_PATH", str(ROOT_PATH / "dataset" / "mscoco" / "images"))
-)
-
-# Helper to safely create directories, ignoring read-only errors (e.g. on Kaggle /kaggle/input)
-def safe_mkdir(path: Path) -> None:
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-
-# ==========================================
-# 3. ARTIFACTS PATHS (Intermediates & Outputs)
-# ==========================================
-ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", str(ROOT_PATH / "artifacts")))
-safe_mkdir(ARTIFACTS_DIR)
-
-VOCAB_PATH = ARTIFACTS_DIR / "vocab_v3.json"
-RUN_ARTIFACTS_DIR = ARTIFACTS_DIR / RUN_MODE
-safe_mkdir(RUN_ARTIFACTS_DIR)
-PREDICTIONS_PATH = RUN_ARTIFACTS_DIR / "predictions.json"
-METRICS_PATH = RUN_ARTIFACTS_DIR / "metrics.json"
-
-# Splits
-SPLITS_DIR = ARTIFACTS_DIR / "splits"
-safe_mkdir(SPLITS_DIR)
-TRAIN_DF_PATH = SPLITS_DIR / "train_df.parquet"
-VAL_DF_PATH = SPLITS_DIR / "val_df.parquet"
-TEST_DF_PATH = SPLITS_DIR / "test_df.parquet"
-
-# ==========================================
-# 3.1 ENCODER MODELS
+# 2. ENCODER MODELS
 # ==========================================
 VISUAL_ENCODER_MODEL = os.getenv("VISUAL_ENCODER_MODEL", "openai/clip-vit-base-patch16")
 RETRIEVAL_ENCODER_MODEL = os.getenv("RETRIEVAL_ENCODER_MODEL", VISUAL_ENCODER_MODEL)
@@ -61,7 +39,64 @@ VISUAL_SAFE_NAME = VISUAL_ENCODER_MODEL.replace("/", "-")
 RETRIEVAL_SAFE_NAME = RETRIEVAL_ENCODER_MODEL.replace("/", "-")
 
 
-# Knowledge Base (FAISS)
+# ==========================================
+# 3. DATASET, SPLITS & VOCABULARY
+# ==========================================
+DATASET_COCO_PATH = Path(
+    os.getenv(
+        "DATASET_COCO_PATH",
+        str(ROOT_PATH / "dataset" / "mscoco" / "dataset_coco.json"),
+    )
+)
+IMAGES_DIR = Path(
+    os.getenv("IMAGES_PATH", str(ROOT_PATH / "dataset" / "mscoco" / "images"))
+)
+
+ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", str(ROOT_PATH / "artifacts")))
+safe_mkdir(ARTIFACTS_DIR)
+
+SPLITS_DIR = ARTIFACTS_DIR / "splits"
+safe_mkdir(SPLITS_DIR)
+TRAIN_DF_PATH = SPLITS_DIR / "train_df.parquet"
+VAL_DF_PATH = SPLITS_DIR / "val_df.parquet"
+TEST_DF_PATH = SPLITS_DIR / "test_df.parquet"
+
+# Preserve the vocabulary used by existing checkpoints.
+VOCAB_PATH = ARTIFACTS_DIR / "vocab_v3.json"
+FREQ_THRESHOLD = int(os.getenv("FREQ_THRESHOLD", "5"))
+
+
+# ==========================================
+# 4. PRECOMPUTED VISUAL FEATURES & EMBEDDINGS
+# ==========================================
+# Patch/CLS features used by the captioning models.
+VISUAL_FEATURES_DIR = Path(
+    os.getenv(
+        "VISUAL_FEATURES_DIR",
+        str(ARTIFACTS_DIR / VISUAL_SAFE_NAME / "visual_features"),
+    )
+)
+safe_mkdir(VISUAL_FEATURES_DIR)
+TRAIN_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "train_visual_features.h5"
+VAL_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "val_visual_features.h5"
+TEST_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "test_visual_features.h5"
+
+# Projected global image embeddings used for retrieval.
+IMAGE_EMBEDDINGS_DIR = Path(
+    os.getenv(
+        "IMAGE_EMBEDDINGS_DIR",
+        str(ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "image_embeddings"),
+    )
+)
+safe_mkdir(IMAGE_EMBEDDINGS_DIR)
+TRAIN_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "train_image_embeddings.h5"
+VAL_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "val_image_embeddings.h5"
+TEST_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "test_image_embeddings.h5"
+
+
+# ==========================================
+# 5. KNOWLEDGE BASES & RETRIEVAL RESULTS
+# ==========================================
 KB_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
 TEXT_KB_FAISS_INDEX_PATH = KB_DIR / "kb_text_index.faiss"
@@ -69,52 +104,45 @@ TEXT_KB_METADATA_PATH = KB_DIR / "kb_text_metadata.parquet"
 IMAGE_KB_FAISS_INDEX_PATH = KB_DIR / "kb_image_index.faiss"
 IMAGE_KB_METADATA_PATH = KB_DIR / "kb_image_metadata.parquet"
 
-# RAG Contexts
 RAG_CONTEXTS_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "rag_contexts"
 safe_mkdir(RAG_CONTEXTS_DIR)
-TRAIN_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "train_rag_contexts.parquet"
-VAL_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "val_rag_contexts.parquet"
-TEST_RAG_CONTEXTS_PATH = RAG_CONTEXTS_DIR / "test_rag_contexts.parquet"
 
-# Visual features (Patch-level)
-VISUAL_FEATURES_DIR = Path(os.getenv("VISUAL_FEATURES_DIR", str(ARTIFACTS_DIR / VISUAL_SAFE_NAME / "visual_features")))
-safe_mkdir(VISUAL_FEATURES_DIR)
-TRAIN_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "train_visual_features.h5"
-VAL_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "val_visual_features.h5"
-TEST_VISUAL_FEATURES_PATH = VISUAL_FEATURES_DIR / "test_visual_features.h5"
+# I2T (Image-to-Text): captions, tokens, objects, relations and retrieval metadata.
+TRAIN_I2T_PATH = RAG_CONTEXTS_DIR / "train_i2t.parquet"
+VAL_I2T_PATH = RAG_CONTEXTS_DIR / "val_i2t.parquet"
+TEST_I2T_PATH = RAG_CONTEXTS_DIR / "test_i2t.parquet"
 
-# Image Embeddings (Projected global features)
-IMAGE_EMBEDDINGS_DIR = Path(os.getenv("IMAGE_EMBEDDINGS_DIR", str(ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "image_embeddings")))
-safe_mkdir(IMAGE_EMBEDDINGS_DIR)
-TRAIN_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "train_image_embeddings.h5"
-VAL_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "val_image_embeddings.h5"
-TEST_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "test_image_embeddings.h5"
-
+# I2I (Image-to-Image): retrieved image IDs and similarity scores.
+TRAIN_I2I_PATH = RAG_CONTEXTS_DIR / "train_i2i.parquet"
+VAL_I2I_PATH = RAG_CONTEXTS_DIR / "val_i2i.parquet"
+TEST_I2I_PATH = RAG_CONTEXTS_DIR / "test_i2i.parquet"
 
 
 # ==========================================
-# 4. CHECKPOINT PATHS (Weights)
+# 6. EXPERIMENT OUTPUTS & CHECKPOINTS
 # ==========================================
-# Nhờ thủ thuật copy sang Working Dir, ta chỉ cần 1 thư mục duy nhất để vừa Load vừa Save
+RUN_ARTIFACTS_DIR = ARTIFACTS_DIR / RUN_MODE
+safe_mkdir(RUN_ARTIFACTS_DIR)
+PREDICTIONS_PATH = RUN_ARTIFACTS_DIR / "predictions.json"
+METRICS_PATH = RUN_ARTIFACTS_DIR / "metrics.json"
+
 CHECKPOINTS_DIR = Path(os.getenv("CHECKPOINTS_DIR", str(ROOT_PATH / "checkpoints")))
-
-# Tự động chia nhánh Checkpoint theo RUN_MODE ('baseline' hoặc 'rag')
 RUN_CHECKPOINT_DIR = CHECKPOINTS_DIR / RUN_MODE
 safe_mkdir(RUN_CHECKPOINT_DIR)
-
 LAST_CHECKPOINT_PATH = RUN_CHECKPOINT_DIR / "last_checkpoint.pth"
 BEST_CHECKPOINT_PATH = RUN_CHECKPOINT_DIR / "best_checkpoint.pth"
 
+
 # ==========================================
-# 5. HYPERPARAMETERS
+# 7. MODEL, TRAINING & CAPTION GENERATION
 # ==========================================
-# Model Architecture
+# Shared captioning architecture.
 DMODEL = int(os.getenv("DMODEL", "512"))
 NHEADS = int(os.getenv("NHEADS", "8"))
 NLAYERS = int(os.getenv("NLAYERS", "4"))
 DROPOUT = float(os.getenv("DROPOUT", "0.1"))
 
-# Training
+# Optimization and data loading.
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
 NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "10"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
@@ -122,31 +150,24 @@ WEIGHT_DECAY = float(os.getenv("WEIGHT_DECAY", "1e-4"))
 MAX_GRAD_NORM = float(os.getenv("MAX_GRAD_NORM", "1.0"))
 NUM_WORKERS = int(os.getenv("NUM_WORKERS", "4"))
 
-# Text & Retrieval Settings
-FREQ_THRESHOLD = int(os.getenv("FREQ_THRESHOLD", "5"))
+# Target caption length and beam search, independent of RAG context length.
 MAX_LENGTH = int(os.getenv("MAX_LENGTH", "40"))
 BEAM_SIZE = int(os.getenv("BEAM_SIZE", "5"))
 
-# RAG Context Encoder
+
+# ==========================================
+# 8. RAG MEMORY SETTINGS
+# ==========================================
+# Image RAG and multimodal RAG.
+TOP_K_RAG_IMAGES = int(os.getenv("TOP_K_RAG_IMAGES", "4"))
+
+# Text RAG and multimodal RAG.
 CTX_NLAYERS = int(os.getenv("CTX_NLAYERS", "2"))
 TOP_K_CAPTIONS = int(os.getenv("TOP_K_CAPTIONS", "4"))
 CTX_TOKENS_PER_CAPTION = int(os.getenv("CTX_TOKENS_PER_CAPTION", "22"))
-MAX_CTX_LENGTH = int(os.getenv("MAX_CTX_LENGTH", str(TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + TOP_K_CAPTIONS)))
-
-# RAG V2 Context Field Lengths
-MAX_CTX_LEN = int(os.getenv("MAX_CTX_LEN", "40"))   # Tokens của mỗi context
-MAX_OBJ_LEN = int(os.getenv("MAX_OBJ_LEN", "10"))   # Objects của mỗi context
-MAX_REL_LEN = int(os.getenv("MAX_REL_LEN", "10"))   # Relations của mỗi context
-
-# RAG V3 Settings
-MAX_RAG_LEN = int(os.getenv("MAX_RAG_LEN", "64"))
-# V4 Image-to-Image RAG Settings
-TRAIN_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "train_rag_tensors.h5"
-VAL_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "val_rag_tensors.h5"
-TEST_RAG_TENSORS_PATH = VISUAL_FEATURES_DIR / "test_rag_tensors.h5"
-TOP_K_RAG_IMAGES = int(os.getenv("TOP_K_RAG_IMAGES", "4"))
-
-# V5 RAG Related Images
-TRAIN_RELATED_IMAGES_PATH = RAG_CONTEXTS_DIR / "train_related_images.parquet"
-VAL_RELATED_IMAGES_PATH = RAG_CONTEXTS_DIR / "val_related_images.parquet"
-TEST_RELATED_IMAGES_PATH = RAG_CONTEXTS_DIR / "test_related_images.parquet"
+MAX_CTX_LENGTH = int(
+    os.getenv(
+        "MAX_CTX_LENGTH",
+        str(TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + TOP_K_CAPTIONS),
+    )
+)

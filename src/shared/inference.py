@@ -1,4 +1,4 @@
-"""Shared inference utilities — dùng chung cho V1 và V2."""
+"""Shared inference utilities for captioning models."""
 
 from __future__ import annotations
 
