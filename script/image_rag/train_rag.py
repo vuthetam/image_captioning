@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 from src.shared.checkpoint import load_checkpoint, save_checkpoint
+from src.shared.scheduler import create_accelerated_warmup_cosine_scheduler, optimizer_steps
 from src.shared.config import (
     BATCH_SIZE,
     BEST_CHECKPOINT_PATH,
@@ -34,6 +35,9 @@ from src.shared.config import (
     VAL_I2I_PATH,
     VOCAB_PATH,
     WEIGHT_DECAY,
+    WARMUP_RATIO,
+    WARMUP_START_FACTOR,
+    MIN_LR_RATIO,
     TOP_K_RAG_IMAGES,
 )
 from src.image_rag.dataset import RAGFeatureCaptionDataset
@@ -115,16 +119,38 @@ def main() -> None:
         trainable_parameters(model), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY
     )
 
+    # Count optimizer updates after sharding; the scheduler library counts the
+    # inner ticks that AcceleratedScheduler advances across all processes.
+    train_loader, val_loader = accelerator.prepare(train_loader, val_loader)
+    lr_schedule = create_accelerated_warmup_cosine_scheduler(
+        optimizer,
+        total_updates=len(train_loader) * NUM_EPOCHS,
+        num_processes=accelerator.num_processes,
+        warmup_ratio=WARMUP_RATIO,
+        warmup_start_factor=WARMUP_START_FACTOR,
+        min_lr_ratio=MIN_LR_RATIO,
+    )
+
     start_epoch = 0
     best_val_loss = float("inf")
-    if LAST_CHECKPOINT_PATH.exists():
+    if LAST_CHECKPOINT_PATH.is_file():
         start_epoch, _, best_val_loss = load_checkpoint(
-            LAST_CHECKPOINT_PATH, model, optimizer, device=accelerator.device
+            LAST_CHECKPOINT_PATH, model, optimizer, scheduler=lr_schedule,
         )
-        accelerator.print(f"Resuming after epoch {start_epoch}.")
+        accelerator.print(
+            f"Resuming after epoch {start_epoch}; updates={optimizer_steps(lr_schedule)}; "
+            f"best_val_loss={best_val_loss:.4f}."
+        )
 
-    model, optimizer, train_loader, val_loader = accelerator.prepare(
-        model, optimizer, train_loader, val_loader
+    model, optimizer, scheduler = accelerator.prepare(model, optimizer, lr_schedule)
+
+    accelerator.print(
+        f"LR schedule: linear warmup + cosine; total updates={lr_schedule.schedule_config['total_updates']}; "
+        f"warmup updates={lr_schedule.schedule_config['warmup_updates']}; "
+        f"peak LR={lr_schedule.base_lrs[0]:.3e}; "
+        f"current LR={optimizer.param_groups[0]['lr']:.3e}; "
+        f"batch/GPU={BATCH_SIZE}; global batch={BATCH_SIZE * accelerator.num_processes}; "
+        f"processes={accelerator.num_processes}"
     )
     
     accelerator.print(
@@ -135,7 +161,8 @@ def main() -> None:
 
     for epoch in range(start_epoch, NUM_EPOCHS):
         train_loss = train_one_epoch(
-            model, train_loader, optimizer, vocab.pad_idx(), accelerator, MAX_GRAD_NORM, show_progress=True, include_cls_token=False
+            model, train_loader, optimizer, vocab.pad_idx(), accelerator, MAX_GRAD_NORM,
+            show_progress=True, include_cls_token=False, scheduler=scheduler,
         )
         val_loss = evaluate_one_epoch(
             model, val_loader, vocab.pad_idx(), accelerator, show_progress=True, include_cls_token=False
@@ -143,7 +170,8 @@ def main() -> None:
         
         accelerator.print(
             f"[Epoch {epoch + 1:02d}/{NUM_EPOCHS}] "
-            f"train loss = {train_loss:.4f} val loss = {val_loss:.4f}"
+            f"train loss = {train_loss:.4f} val loss = {val_loss:.4f}; "
+            f"LR={optimizer.param_groups[0]['lr']:.3e}; updates={optimizer_steps(lr_schedule)}"
         )
 
         if accelerator.is_main_process:
@@ -151,11 +179,11 @@ def main() -> None:
             if is_best:
                 best_val_loss = val_loss
                 save_checkpoint(
-                    BEST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
+                    BEST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator, scheduler=scheduler
                 )
                 
             save_checkpoint(
-                LAST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator
+                LAST_CHECKPOINT_PATH, model, optimizer, epoch + 1, train_loss, best_val_loss, accelerator, scheduler=scheduler
             )
             
     accelerator.print("TRAINING COMPLETE Image RAG!")

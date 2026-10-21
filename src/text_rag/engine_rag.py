@@ -4,6 +4,7 @@ from typing import Iterable
 
 import torch
 from accelerate import Accelerator
+from accelerate.scheduler import AcceleratedScheduler
 from torch import nn
 from tqdm.auto import tqdm
 
@@ -52,6 +53,7 @@ def train_one_epoch(
     max_grad_norm: float = 1.0,
     show_progress: bool = False,
     include_cls_token: bool = False,
+    scheduler: AcceleratedScheduler | None = None,
 ) -> float:
     model.train()
     total_loss = 0.0
@@ -83,6 +85,8 @@ def train_one_epoch(
         accelerator.backward(normalized_loss)
         accelerator.clip_grad_norm_(trainable_parameters(model), max_grad_norm)
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
 
         reduced_loss = accelerator.reduce(loss_sum.detach(), reduction="sum")
         total_loss += reduced_loss.item()

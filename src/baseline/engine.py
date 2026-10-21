@@ -1,6 +1,7 @@
 from typing import Iterable
 import torch
 from accelerate import Accelerator
+from accelerate.scheduler import AcceleratedScheduler
 from torch import nn
 from tqdm.auto import tqdm
 from src.shared.utils import trainable_parameters
@@ -37,6 +38,7 @@ def train_one_epoch(
     accelerator: Accelerator,
     max_grad_norm: float = 1.0,
     show_progress: bool = False,
+    scheduler: AcceleratedScheduler | None = None,
 ) -> float:
     model.train()
 
@@ -72,6 +74,8 @@ def train_one_epoch(
         )
 
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
 
         # Dùng lại loss_sum để tính metric (Logging)
         reduced_loss = accelerator.reduce(loss_sum.detach(), reduction="sum")

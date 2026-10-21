@@ -1,6 +1,6 @@
 # Thứ tự chạy script
 
-Chạy các lệnh từ thư mục gốc của project. Cần có dataset MS COCO và cấu hình đường dẫn trong `.env` hoặc dùng giá trị mặc định trong `src/config.py`.
+Chạy các lệnh từ thư mục gốc của project. Cần có dataset MS COCO và cấu hình đường dẫn trong `.env` hoặc dùng giá trị mặc định trong `src/shared/config.py`.
 
 Tên script sinh caption thống nhất theo dạng `generate_<loại>_captions.py`:
 
@@ -223,9 +223,48 @@ Cuoi cung chay `evaluate.ipynb` de tinh BLEU, METEOR, ROUGE-L, CIDEr va SPICE
 tu prediction JSON. Notebook nay khong encode anh; phan hien thi mau van can
 `IMAGES_PATH` neu muon xem anh goc.
 
+## 8. Learning rate: linear warmup và cosine decay
+
+Baseline, image RAG, text RAG và multimodal RAG (kể cả `--no-input-image`) dùng
+AdamW với scheduler có sẵn của Transformers:
+`get_cosine_with_min_lr_schedule_with_warmup_lr_rate`. Cấu hình mặc định:
+
+```dotenv
+LEARNING_RATE=1e-4
+WARMUP_RATIO=0.05
+WARMUP_START_FACTOR=0.01
+MIN_LR_RATIO=0.05
+```
+
+`LEARNING_RATE` là LR đỉnh. Scheduler tăng tuyến tính từ 1% LR đỉnh trong 5% đầu
+quá trình, sau đó giảm theo cosine đến 5% LR đỉnh. Ví dụ:
+`1e-6 → 1e-4 → 5e-6`.
+
+Accelerate mặc định dùng `split_batches=False`, nên `BATCH_SIZE` áp dụng trên mỗi
+GPU. `total_updates` lấy từ số batch mỗi process sau khi Accelerate chuẩn bị
+DataLoader, nhân với số epoch. Accelerate bọc scheduler trong
+`AcceleratedScheduler`; mỗi optimizer update thành công, wrapper tiến scheduler
+bên trong theo số process. Helper trong `src/shared/scheduler.py` quy đổi số bước
+cho wrapper và chuyển cấu hình sang API Transformers; thư viện tính đường cong LR.
+
+Engine gọi `scheduler.step()` sau `optimizer.step()`. Wrapper xử lý các bước chưa
+đồng bộ và trường hợp optimizer bỏ qua update do mixed precision. Log hiển thị LR
+và số optimizer update; validation không tiến scheduler.
+
+Checkpoint lưu state và cấu hình scheduler để kiểm tra khi resume. Giữ nguyên LR
+đỉnh, các tỉ lệ, tổng số epoch và số process để tiếp tục cùng lịch. Checkpoint cũ
+chưa có state scheduler vẫn dùng được để nạp weights và inference; để train theo
+lịch mới, bắt đầu `RUN_MODE` mới.
+
+Chạy kiểm tra scheduler và checkpoint bằng:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## Cấu hình đường dẫn chính
 
-Các biến được định nghĩa trong `src/config.py`:
+Các biến được định nghĩa trong `src/shared/config.py`:
 
 | Biến | Mặc định |
 | --- | --- |

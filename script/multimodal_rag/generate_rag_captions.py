@@ -87,7 +87,7 @@ def main(no_input_image: bool = False) -> None:
     if not BEST_CHECKPOINT_PATH.is_file():
         raise FileNotFoundError(f"Không tìm thấy checkpoint: {BEST_CHECKPOINT_PATH}")
     epoch, _, best_val_loss = load_checkpoint(
-        BEST_CHECKPOINT_PATH, model, device=accelerator.device
+        BEST_CHECKPOINT_PATH, model
     )
     accelerator.print(f"model={model_class.__name__}; run mode={RUN_MODE}; loaded epoch {epoch}; best val loss: {best_val_loss}")
 

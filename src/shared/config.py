@@ -142,13 +142,19 @@ NHEADS = int(os.getenv("NHEADS", "8"))
 NLAYERS = int(os.getenv("NLAYERS", "4"))
 DROPOUT = float(os.getenv("DROPOUT", "0.1"))
 
-# Optimization and data loading.
+# Optimization and data loading. BATCH_SIZE is per GPU;
+# global training batch size = BATCH_SIZE * number of GPUs (without accumulation).
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
 NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "10"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
 WEIGHT_DECAY = float(os.getenv("WEIGHT_DECAY", "1e-4"))
 MAX_GRAD_NORM = float(os.getenv("MAX_GRAD_NORM", "1.0"))
 NUM_WORKERS = int(os.getenv("NUM_WORKERS", "4"))
+
+# Linear warmup followed by cosine decay; LEARNING_RATE is the peak LR.
+WARMUP_RATIO = float(os.getenv("WARMUP_RATIO", "0.05"))
+WARMUP_START_FACTOR = float(os.getenv("WARMUP_START_FACTOR", "0.01"))
+MIN_LR_RATIO = float(os.getenv("MIN_LR_RATIO", "0.05"))
 
 # Target caption length and beam search, independent of RAG context length.
 MAX_LENGTH = int(os.getenv("MAX_LENGTH", "40"))

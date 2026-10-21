@@ -74,7 +74,7 @@ def main() -> None:
     if not BEST_CHECKPOINT_PATH.is_file():
         raise FileNotFoundError(f"Không tìm thấy checkpoint: {BEST_CHECKPOINT_PATH}")
         
-    epoch, _, _ = load_checkpoint(BEST_CHECKPOINT_PATH, model, device=accelerator.device)
+    epoch, _, _ = load_checkpoint(BEST_CHECKPOINT_PATH, model)
     accelerator.print(f"Đã nạp epoch {epoch}")
 
     model, test_loader = accelerator.prepare(model, test_loader)
