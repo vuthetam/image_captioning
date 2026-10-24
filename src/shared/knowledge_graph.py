@@ -44,10 +44,17 @@ class CheckedParser(SceneGraphParser):
         self.parser_type = "default"
 
     def graph_string_to_object(self, text):
-        """Convert FACTUAL tuples and retain any entities listed on their own."""
+        """Convert FACTUAL tuples and retain any entities listed on their own.
+
+        Handles comma-attribute facts of the form ``(subject, is, val1, val2, ...)``
+        where the attribute value itself contains commas (e.g. sign inscriptions or
+        prohibition lists).  The base-class converter silently drops these tuples,
+        so we extract and attach them manually before delegating relation parsing.
+        """
         fact_texts = re.findall(r"\(([^()]*)\)", text)
         triplet_texts = []
         standalone_entities = []
+        comma_attributes = []  # (subject_name, attribute_value)
 
         for fact_text in fact_texts:
             parts = [part.strip() for part in fact_text.split(",")]
@@ -55,6 +62,10 @@ class CheckedParser(SceneGraphParser):
                 standalone_entities.append(parts[0])
             elif len(parts) == 3:
                 triplet_texts.append(", ".join(parts))
+            elif len(parts) > 3 and parts[1] == "is":
+                # FACTUAL uses "is" for attributes; the value can contain a list
+                # or inscription, such as "no bicycles, skates, skateboards".
+                comma_attributes.append((parts[0], ", ".join(parts[2:])))
 
         # Let FACTUAL's original converter handle relations and attributes.
         if triplet_texts:
@@ -69,6 +80,9 @@ class CheckedParser(SceneGraphParser):
         entity_map = {}
         for index, entity in enumerate(graph["entities"]):
             entity_map[entity["head"]] = index
+        for subject, attribute in comma_attributes:
+            index = self._get_or_create_entity_index(subject, graph, entity_map)
+            graph["entities"][index]["attributes"].add(attribute)
         for entity_name in standalone_entities:
             self._get_or_create_entity_index(entity_name, graph, entity_map)
 
@@ -123,7 +137,10 @@ class CheckedParser(SceneGraphParser):
                 malformed = not fact_texts or bool(text_outside_facts)
                 for fact_text in fact_texts:
                     parts = fact_text.split(",")
-                    has_wrong_number_of_parts = len(parts) not in (1, 3)
+                    # A tuple (subject, is, val1, val2, ...) is a valid FACTUAL
+                    # comma-attribute when the attribute value contains commas.
+                    is_comma_attribute = len(parts) > 3 and parts[1].strip() == "is"
+                    has_wrong_number_of_parts = len(parts) not in (1, 3) and not is_comma_attribute
                     has_empty_part = any(not part.strip() for part in parts)
                     if has_wrong_number_of_parts or has_empty_part:
                         malformed = True
@@ -205,8 +222,9 @@ class GraphLinearizer:
                 elif self.lexicon.hasWord(attribute, self.category.ADJECTIVE):
                     text = self._noun(entity, attribute)
                 else:
-                    # Preserve states such as "made of wood" as suffixes.
-                    text = f"{self._noun(entity)} {attribute}"
+                    # Link attribute to its entity with "is" (mirrors FACTUAL's
+                    # own predicate and reads naturally for all attribute types).
+                    text = f"{self._noun(entity)} is {attribute}"
                 attribute_texts.append(text)
         for edge in graph["relations"]:
             subject_id, object_id = edge["subject"], edge["object"]
