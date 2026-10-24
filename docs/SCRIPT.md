@@ -51,10 +51,70 @@ artifacts/vocab_v3.json
 python script/shared/build_kb.py
 ```
 
-Script dùng caption của tập train để tạo text embedding bằng `RETRIEVAL_ENCODER_MODEL`, chuẩn hóa vector và lưu:
+Chuẩn bị thêm các dependency cho bước xây KB:
 
-- `artifacts/<retrieval-model-id>/kb/kb_text_index.faiss`
-- `artifacts/<retrieval-model-id>/kb/kb_text_metadata.parquet`
+```bash
+pip install -r requirements-kb.txt
+```
+
+Script chỉ dùng caption của tập **train**. FACTUAL Base bản `-id`
+(`lizhuang144/flan-t5-base-VG-factual-sg-id`, hằng số trong `build_kb.py`)
+chạy inference với `return_text=False`, giữ định danh entity và marker `v:`/`pv:`.
+pySimpleNLG chạy thuần Python, không cần Java, chỉ hiện thực dạng phân từ của
+động từ; danh từ được ghép trực tiếp để giữ nguyên dạng FACTUAL trả về.
+FACTUAL được giải phóng khỏi GPU trước khi tải CLIP.
+
+Metadata giữ `caption_id` (vị trí dòng trong train split), `imgid`, `filepath`,
+`filename`, `caption` và `tokens` gốc, rồi bổ sung:
+
+- `objects`: danh sách tên object, không có hậu tố ID.
+- `attributes`: các struct `{object, attribute}`, bỏ qua số lượng trong graph.
+- `triplets`: các struct `{subject, predicate, object, voice}`.
+- `object_texts`, `attribute_texts`, `triplet_texts`: cụm linearized tương ứng.
+
+Ví dụ graph `(man, v:ride, bicycle), (bicycle, is, red)` tạo các cụm
+`man`, `bicycle`, `red bicycle`, `man riding bicycle`.
+Quan hệ `pv:park on` được dựng thành `parked on`, không đổi vai subject/object.
+Không tự thêm mạo từ, suy ra thì hay đổi số ít/số nhiều của danh từ.
+Không lưu trường số lượng của graph vào metadata hay ghép vào keyword. Từ điển SimpleNLG
+giúp chọn thuộc tính tính từ đứng trước danh từ; trạng thái như `made of wood`
+đứng sau danh từ, không tự thêm động từ `be`.
+Đây là linearization theo luật/lexicon, không đảm bảo ngữ pháp hay parsing chính
+xác tuyệt đối. Cần kiểm tra mẫu thật trước khi dùng các cụm cho thí nghiệm truy hồi.
+
+Cấu hình trong `src/shared/config.py`: đường dẫn train/KB
+và `RETRIEVAL_ENCODER_MODEL`. Batch size được đặt cố định trong `build_kb.py`:
+FACTUAL dùng 32, CLIP dùng 64.
+Script tự chọn CUDA nếu có, xử lý toàn bộ train split và ghi vào đường dẫn KB.
+Giao thức trích xuất cố định trong `PARSING_OPTIONS` ở `build_kb.py`:
+5 beams, giới hạn input/output 128/256 token. Các giá trị này độc lập với
+tham số sinh caption của mô hình chính.
+
+Đầu vào quá dài, đầu ra chạm giới hạn, hoặc graph sai định dạng sẽ dừng để kiểm tra,
+không âm thầm cắt hoặc bỏ đơn vị. Graph chỉ có entity riêng lẻ vẫn được giữ.
+
+Metadata được ghi lần lượt theo batch vào một file Parquet tạm, không lưu file
+chunk hay tiếp tục từ batch đã xử lý. Nếu bị ngắt, lần chạy sau xử lý lại từ đầu.
+`kb_i2t_manifest.json` nằm cùng thư mục với metadata, giữ model commit đã chọn
+để các lần chạy dùng cùng phiên bản. File chỉ lưu hai trường `model` và `revision`.
+Trên Kaggle cần Internet khi tải checkpoint/package lần đầu.
+
+Sau khi xây metadata, script tạo text embedding **của caption gốc** bằng
+`RETRIEVAL_ENCODER_MODEL`, chuẩn hóa vector và lưu:
+
+- `artifacts/<retrieval-model-id>/kb/kb_i2t_index.faiss`
+- `artifacts/<retrieval-model-id>/kb/kb_i2t_metadata.parquet`
+
+Index vẫn theo caption để tương thích với text RAG hiện tại. Các cụm được lưu
+để kiểm tra và phục vụ bước xây index theo đơn vị sau này; model train vẫn đọc
+tokens caption. File đích chỉ được thay khi hoàn thành cả metadata và index.
+Không chạy nhiều builder cùng một thư mục output đồng thời.
+
+Kiểm tra offline (không tải trọng số FACTUAL) bằng:
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 ## 4. Retrieve context RAG
 
@@ -73,15 +133,18 @@ Script không cần ảnh gốc, visual features, tải CLIP hay chạy Accelera
 - `artifacts/<retrieval-model-id>/rag_contexts/test_i2t.parquet`
 
 Đầu vào gồm `train_image_embeddings.h5`, `val_image_embeddings.h5`,
-`test_image_embeddings.h5` trong `IMAGE_EMBEDDINGS_DIR`, cùng `kb_text_index.faiss`
-và `kb_text_metadata.parquet` trong thư mục KB của cùng model. Mỗi file HDF5 có
+`test_image_embeddings.h5` trong `IMAGE_EMBEDDINGS_DIR`, cùng `kb_i2t_index.faiss`
+và `kb_i2t_metadata.parquet` trong thư mục KB của cùng model. Mỗi file HDF5 có
 `imgids [N]` và `features [N, D]` đã qua CLIP projection. Caption thuộc chính ảnh
 truy vấn được loại khỏi kết quả. Trong tên thư mục model, `/` được thay bằng `-`
 (ví dụ `openai-clip-vit-large-patch14`).
 
 Parquet đầu ra có `imgid` của ảnh truy vấn và `retrieval_imgids` là danh sách ID ảnh
-của từng caption truy hồi, cùng thứ tự với `captions`, `tokens`, `objects`, `relations`
+của từng caption truy hồi, cùng thứ tự với `captions`, `tokens`, `objects`
 và `retrieval_scores`. Một ID có thể xuất hiện nhiều lần nếu lấy nhiều caption của ảnh đó.
+Với KB mới, kết quả còn giữ `retrieval_caption_ids`, `attributes`, `triplets`,
+`object_texts`, `attribute_texts`, `triplet_texts`, cùng thứ tự caption truy hồi.
+Script vẫn đọc được KB cũ chưa có các cột bổ sung.
 
 ## 5. Train và generate text RAG
 

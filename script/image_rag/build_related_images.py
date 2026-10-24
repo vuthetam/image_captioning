@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.config import (
     TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
     TRAIN_I2I_PATH, VAL_I2I_PATH, TEST_I2I_PATH,
-    IMAGE_KB_FAISS_INDEX_PATH, IMAGE_KB_METADATA_PATH,
+    I2I_KB_FAISS_INDEX_PATH, I2I_KB_METADATA_PATH,
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
 )
 
@@ -79,12 +79,12 @@ def process_and_retrieve(embeddings_path, output_parquet_path, faiss_index, kb_i
     print(f"Đã lưu kết quả tại {output_parquet_path} (Kích thước: {df.shape})")
 
 def main():
-    if not IMAGE_KB_FAISS_INDEX_PATH.exists():
-        raise FileNotFoundError(f"Lỗi: Không tìm thấy {IMAGE_KB_FAISS_INDEX_PATH}")
+    if not I2I_KB_FAISS_INDEX_PATH.exists():
+        raise FileNotFoundError(f"Lỗi: Không tìm thấy {I2I_KB_FAISS_INDEX_PATH}")
         
     print("Đang tải FAISS Image Index và KB Metadata...")
-    faiss_index = faiss.read_index(str(IMAGE_KB_FAISS_INDEX_PATH))
-    kb_df = pd.read_parquet(IMAGE_KB_METADATA_PATH)
+    faiss_index = faiss.read_index(str(I2I_KB_FAISS_INDEX_PATH))
+    kb_df = pd.read_parquet(I2I_KB_METADATA_PATH)
     kb_imgids = kb_df["imgid"].tolist()
     
     print("Đang tải metadata từ các tập train/val/test...")

@@ -14,8 +14,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.config import (
     TRAIN_DF_PATH,
     TRAIN_IMAGE_EMBEDDINGS_PATH,
-    IMAGE_KB_FAISS_INDEX_PATH,
-    IMAGE_KB_METADATA_PATH
+    I2I_KB_FAISS_INDEX_PATH,
+    I2I_KB_METADATA_PATH
 )
 
 def main():
@@ -59,12 +59,12 @@ def main():
     print("\nĐang lưu Image Knowledge Base xuống đĩa...")
     
     # Tạo thư mục chứa nếu chưa có
-    IMAGE_KB_FAISS_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    I2I_KB_FAISS_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     
-    faiss.write_index(index, str(IMAGE_KB_FAISS_INDEX_PATH))
-    metadata_df.to_parquet(IMAGE_KB_METADATA_PATH)
+    faiss.write_index(index, str(I2I_KB_FAISS_INDEX_PATH))
+    metadata_df.to_parquet(I2I_KB_METADATA_PATH)
     
-    print(f"HOÀN TẤT! Đã lưu tại:\n- {IMAGE_KB_FAISS_INDEX_PATH}\n- {IMAGE_KB_METADATA_PATH}")
+    print(f"HOÀN TẤT! Đã lưu tại:\n- {I2I_KB_FAISS_INDEX_PATH}\n- {I2I_KB_METADATA_PATH}")
 
 if __name__ == "__main__":
     main()

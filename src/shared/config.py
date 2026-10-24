@@ -34,7 +34,6 @@ RUN_MODE = os.getenv("RUN_MODE", "baseline")
 # ==========================================
 VISUAL_ENCODER_MODEL = os.getenv("VISUAL_ENCODER_MODEL", "openai/clip-vit-base-patch16")
 RETRIEVAL_ENCODER_MODEL = os.getenv("RETRIEVAL_ENCODER_MODEL", VISUAL_ENCODER_MODEL)
-
 VISUAL_SAFE_NAME = VISUAL_ENCODER_MODEL.replace("/", "-")
 RETRIEVAL_SAFE_NAME = RETRIEVAL_ENCODER_MODEL.replace("/", "-")
 
@@ -99,15 +98,16 @@ TEST_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "test_image_embeddings.h5"
 # ==========================================
 KB_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
-TEXT_KB_FAISS_INDEX_PATH = KB_DIR / "kb_text_index.faiss"
-TEXT_KB_METADATA_PATH = KB_DIR / "kb_text_metadata.parquet"
-IMAGE_KB_FAISS_INDEX_PATH = KB_DIR / "kb_image_index.faiss"
-IMAGE_KB_METADATA_PATH = KB_DIR / "kb_image_metadata.parquet"
+I2T_KB_FAISS_INDEX_PATH = KB_DIR / "kb_i2t_index.faiss"
+I2T_KB_METADATA_PATH = KB_DIR / "kb_i2t_metadata.parquet"
+I2T_KB_MANIFEST_PATH = KB_DIR / "kb_i2t_manifest.json"
+I2I_KB_FAISS_INDEX_PATH = KB_DIR / "kb_i2i_index.faiss"
+I2I_KB_METADATA_PATH = KB_DIR / "kb_i2i_metadata.parquet"
 
 RAG_CONTEXTS_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "rag_contexts"
 safe_mkdir(RAG_CONTEXTS_DIR)
 
-# I2T (Image-to-Text): captions, tokens, objects, relations and retrieval metadata.
+# I2T (Image-to-Text): captions/tokens, semantic units/phrases and retrieval metadata.
 TRAIN_I2T_PATH = RAG_CONTEXTS_DIR / "train_i2t.parquet"
 VAL_I2T_PATH = RAG_CONTEXTS_DIR / "val_i2t.parquet"
 TEST_I2T_PATH = RAG_CONTEXTS_DIR / "test_i2t.parquet"

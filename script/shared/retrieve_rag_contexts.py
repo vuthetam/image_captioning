@@ -17,12 +17,16 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.config import (
     TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
     TRAIN_I2T_PATH, VAL_I2T_PATH, TEST_I2T_PATH,
-    RETRIEVAL_ENCODER_MODEL, TEXT_KB_FAISS_INDEX_PATH, TEXT_KB_METADATA_PATH,
+    RETRIEVAL_ENCODER_MODEL, I2T_KB_FAISS_INDEX_PATH, I2T_KB_METADATA_PATH,
 )
 
-TARGET_K = 8
-CONTEXT_COLUMNS = ["retrieval_imgids", "captions", "tokens", "objects", "relations"]
-METADATA_COLUMNS = ["imgid", "caption", "tokens", "objects", "relations"]
+TARGET_K = 10
+CONTEXT_COLUMNS = ["retrieval_imgids", "captions", "tokens", "objects",
+                   "attributes", "triplets", "object_texts", "attribute_texts", "triplet_texts",
+                   "retrieval_caption_ids"]
+METADATA_COLUMNS = ["imgid", "caption", "tokens", "objects",
+                    "attributes", "triplets", "object_texts", "attribute_texts", "triplet_texts",
+                    "caption_id"]
 
 
 def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_metadata, batch_size=256):
@@ -35,6 +39,8 @@ def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_met
     max_self_captions = int(kb_metadata["imgid"].value_counts().max())
     search_k = min(index.ntotal, TARGET_K + max_self_captions)
     results = []
+    column_pairs = [(out, source) for out, source in zip(CONTEXT_COLUMNS, METADATA_COLUMNS)
+                    if source in kb_metadata.columns]
 
     with h5py.File(img_embeddings_path, "r") as h5f:
         stored_model = h5f.attrs.get("model_id")
@@ -72,13 +78,13 @@ def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_met
                 selected_metadata = kb_metadata.iloc[selected_indices]
 
                 result = {"imgid": int(imgid)}
-                for output_column, metadata_column in zip(CONTEXT_COLUMNS, METADATA_COLUMNS):
+                for output_column, metadata_column in column_pairs:
                     result[output_column] = selected_metadata[metadata_column].tolist()
                 result["retrieval_scores"] = [float(score) for score in selected_scores]
                 results.append(result)
 
     results_df = pd.DataFrame(
-        results, columns=["imgid", *CONTEXT_COLUMNS, "retrieval_scores"]
+        results, columns=["imgid", *(out for out, _ in column_pairs), "retrieval_scores"]
     )
     output_parquet_path.parent.mkdir(parents=True, exist_ok=True)
     results_df.to_parquet(output_parquet_path, index=False)
@@ -91,17 +97,17 @@ def main():
         (VAL_IMAGE_EMBEDDINGS_PATH, VAL_I2T_PATH),
         (TEST_IMAGE_EMBEDDINGS_PATH, TEST_I2T_PATH),
     ]
-    for path in [TEXT_KB_FAISS_INDEX_PATH, TEXT_KB_METADATA_PATH, *(p for p, _ in splits)]:
+    for path in [I2T_KB_FAISS_INDEX_PATH, I2T_KB_METADATA_PATH, *(p for p, _ in splits)]:
         if not path.is_file():
             raise FileNotFoundError(f"Không tìm thấy {path}")
 
     print(f"Truy hồi từ image embeddings đã lưu ({RETRIEVAL_ENCODER_MODEL}) trên CPU.")
     print("Đang tải Text FAISS Index và Knowledge Base Metadata...")
-    index = faiss.read_index(str(TEXT_KB_FAISS_INDEX_PATH))
-    kb_metadata = pd.read_parquet(TEXT_KB_METADATA_PATH)
+    index = faiss.read_index(str(I2T_KB_FAISS_INDEX_PATH))
+    kb_metadata = pd.read_parquet(I2T_KB_METADATA_PATH)
     if index.ntotal == 0 or index.ntotal != len(kb_metadata):
         raise ValueError("Text index phải không rỗng và có số vector bằng số dòng metadata.")
-    missing_columns = set(METADATA_COLUMNS) - set(kb_metadata.columns)
+    missing_columns = {"imgid", "caption", "tokens", "objects"} - set(kb_metadata.columns)
     if missing_columns:
         raise ValueError(f"Text KB metadata thiếu các cột: {sorted(missing_columns)}")
 
