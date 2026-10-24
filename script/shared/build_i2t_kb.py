@@ -31,7 +31,7 @@ KB_EMBEDDING_BATCH_SIZE = 32
 SCENE_GRAPH_MODEL = 'lizhuang144/flan-t5-base-VG-factual-sg-id'
 
 # Fixed extraction protocol, independent of the caption decoder's beam settings.
-PARSING_OPTIONS = dict(beam_size=5, max_input_len=128, max_output_len=256)
+PARSING_OPTIONS = dict(beam_size=2, max_input_len=128, max_output_len=256)
 
 
 def metadata_schema():

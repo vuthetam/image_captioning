@@ -44,47 +44,42 @@ class CheckedParser(SceneGraphParser):
         self.parser_type = "default"
 
     def graph_string_to_object(self, text):
-        """Convert FACTUAL tuples and retain any entities listed on their own.
+        """Convert FACTUAL tuples directly and robustly into entity/relation dicts.
 
-        Handles comma-attribute facts of the form ``(subject, is, val1, val2, ...)``
-        where the attribute value itself contains commas (e.g. sign inscriptions or
-        prohibition lists).  The base-class converter silently drops these tuples,
-        so we extract and attach them manually before delegating relation parsing.
+        Handles 1-tuples (entities), 2-tuples (attributes), 3-tuples (triplets/attributes),
+        and n-tuples where attribute values or object names contain commas (e.g. sign
+        inscriptions, list of items, or geographical entities).
         """
-        fact_texts = re.findall(r"\(([^()]*)\)", text)
-        triplet_texts = []
-        standalone_entities = []
-        comma_attributes = []  # (subject_name, attribute_value)
-
-        for fact_text in fact_texts:
-            parts = [part.strip() for part in fact_text.split(",")]
-            if len(parts) == 1:
-                standalone_entities.append(parts[0])
-            elif len(parts) == 3:
-                triplet_texts.append(", ".join(parts))
-            elif len(parts) > 3 and parts[1] == "is":
-                # FACTUAL uses "is" for attributes; the value can contain a list
-                # or inscription, such as "no bicycles, skates, skateboards".
-                comma_attributes.append((parts[0], ", ".join(parts[2:])))
-
-        # Let FACTUAL's original converter handle relations and attributes.
-        if triplet_texts:
-            triplet_graph_text = " , ".join(
-                f"( {triplet_text} )" for triplet_text in triplet_texts
-            )
-            graph = super().graph_string_to_object(triplet_graph_text)
-        else:
-            graph = {"entities": [], "relations": []}
-
-        # The original converter can drop one-item facts when other facts exist.
+        graph = {"entities": [], "relations": []}
         entity_map = {}
-        for index, entity in enumerate(graph["entities"]):
-            entity_map[entity["head"]] = index
-        for subject, attribute in comma_attributes:
-            index = self._get_or_create_entity_index(subject, graph, entity_map)
-            graph["entities"][index]["attributes"].add(attribute)
-        for entity_name in standalone_entities:
-            self._get_or_create_entity_index(entity_name, graph, entity_map)
+
+        fact_texts = re.findall(r"\(([^()]*)\)", text)
+        for fact_text in fact_texts:
+            parts = [p.strip() for p in fact_text.split(",") if p.strip()]
+            if not parts:
+                continue
+            if len(parts) == 1:
+                self._get_or_create_entity_index(parts[0], graph, entity_map)
+            elif len(parts) == 2:
+                sub_idx = self._get_or_create_entity_index(parts[0], graph, entity_map)
+                graph["entities"][sub_idx]["attributes"].add(parts[1])
+            else:
+                subject = parts[0]
+                relation = parts[1]
+                obj = ", ".join(parts[2:])
+                sub_idx = self._get_or_create_entity_index(subject, graph, entity_map)
+                if relation == "is":
+                    if obj.isdigit():
+                        graph["entities"][sub_idx]["quantity"] = obj
+                    else:
+                        graph["entities"][sub_idx]["attributes"].add(obj)
+                else:
+                    obj_idx = self._get_or_create_entity_index(obj, graph, entity_map)
+                    graph["relations"].append({
+                        "subject": sub_idx,
+                        "relation": relation,
+                        "object": obj_idx,
+                    })
 
         return graph
 
@@ -136,12 +131,10 @@ class CheckedParser(SceneGraphParser):
 
                 malformed = not fact_texts or bool(text_outside_facts)
                 for fact_text in fact_texts:
-                    parts = fact_text.split(",")
-                    # A tuple (subject, is, val1, val2, ...) is a valid FACTUAL
-                    # comma-attribute when the attribute value contains commas.
-                    is_comma_attribute = len(parts) > 3 and parts[1].strip() == "is"
-                    has_wrong_number_of_parts = len(parts) not in (1, 3) and not is_comma_attribute
-                    has_empty_part = any(not part.strip() for part in parts)
+                    raw_parts = fact_text.split(",")
+                    parts = [p.strip() for p in raw_parts if p.strip()]
+                    has_wrong_number_of_parts = len(parts) < 1
+                    has_empty_part = any(not p.strip() for p in raw_parts)
                     if has_wrong_number_of_parts or has_empty_part:
                         malformed = True
                         break
