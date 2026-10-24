@@ -22,11 +22,9 @@ from src.shared.config import (
 
 TARGET_K = 10
 CONTEXT_COLUMNS = ["retrieval_imgids", "captions", "tokens", "objects",
-                   "attributes", "triplets", "object_texts", "attribute_texts", "triplet_texts",
-                   "retrieval_caption_ids"]
+                   "attributes", "triplets", "object_texts", "attribute_texts", "triplet_texts"]
 METADATA_COLUMNS = ["imgid", "caption", "tokens", "objects",
-                    "attributes", "triplets", "object_texts", "attribute_texts", "triplet_texts",
-                    "caption_id"]
+                    "attributes", "triplets", "object_texts", "attribute_texts", "triplet_texts"]
 
 
 def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_metadata, batch_size=256):

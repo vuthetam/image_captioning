@@ -1,4 +1,4 @@
-﻿"""Build a train-only caption KB with FACTUAL graphs and SimpleNLG phrases."""
+"""Build a train-only caption KB with FACTUAL graphs and SimpleNLG phrases."""
 import json
 from pathlib import Path
 import sys
@@ -26,8 +26,8 @@ from src.shared.knowledge_graph import CheckedParser, GraphLinearizer
 from src.shared.utils import extract_global_embedding
 
 # Use separate batch sizes for scene graph parsing and CLIP embedding.
-SCENE_GRAPH_BATCH_SIZE = 32
-KB_EMBEDDING_BATCH_SIZE = 64
+SCENE_GRAPH_BATCH_SIZE = 16
+KB_EMBEDDING_BATCH_SIZE = 32
 SCENE_GRAPH_MODEL = 'lizhuang144/flan-t5-base-VG-factual-sg-id'
 
 # Fixed extraction protocol, independent of the caption decoder's beam settings.
@@ -39,7 +39,7 @@ def metadata_schema():
     attribute = pa.struct([('object', pa.string()), ('attribute', pa.string())])
     triplet = pa.struct([(k, pa.string()) for k in ('subject', 'predicate', 'object', 'voice')])
     return pa.schema([
-        ('caption_id', pa.int64()), ('imgid', pa.int64()),
+        ('imgid', pa.int64()),
         ('filepath', pa.string()), ('filename', pa.string()),
         ('caption', pa.string()), ('tokens', strings), ('objects', strings),
         ('attributes', pa.list_(attribute)), ('triplets', pa.list_(triplet)),
@@ -57,14 +57,22 @@ def resolve_model_revision(manifest_path):
         if manifest.get('model') == SCENE_GRAPH_MODEL:
             revision = manifest.get('revision')
     if not revision:
-        revision = model_info(SCENE_GRAPH_MODEL).sha
+        try:
+            revision = model_info(SCENE_GRAPH_MODEL).sha
+        except Exception:
+            revision = None
     manifest = {'model': SCENE_GRAPH_MODEL, 'revision': revision}
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     return revision
 
 
-def build_metadata(train_df_path, metadata_path, revision, device, batch_size=256):
-    """Extract and linearize all captions, streaming batches to one Parquet file."""
+def build_metadata(train_df_path, metadata_path, revision, device,
+                   shard_index=0, num_shards=1, batch_size=256):
+    """Extract and linearize captions for one data shard, streaming to a Parquet file.
+
+    When num_shards > 1 (multi-GPU), each rank writes its own temporary shard file
+    which is later merged by merge_shards() on rank 0.
+    """
     df = pd.read_parquet(train_df_path).reset_index(drop=True)
     cap_col = 'caption' if 'caption' in df else 'raw'
     required = {'imgid', 'tokens', cap_col}
@@ -72,30 +80,33 @@ def build_metadata(train_df_path, metadata_path, revision, device, batch_size=25
         raise ValueError(f'Missing training columns: {sorted(required - set(df.columns))}')
     if df.empty or any(not isinstance(s, str) or not s.strip() for s in df[cap_col]):
         raise ValueError('Training captions must be nonempty strings.')
+    df_shard = df.iloc[shard_index::num_shards].reset_index(drop=True)
     parser = CheckedParser(SCENE_GRAPH_MODEL, device, revision)
     linearizer = GraphLinearizer()
     schema = metadata_schema()
-    pending = metadata_path.with_suffix('.tmp.parquet')
+    suffix = f'.shard{shard_index}.tmp.parquet' if num_shards > 1 else '.tmp.parquet'
+    pending = metadata_path.with_suffix(suffix)
     try:
         with pq.ParquetWriter(pending, schema) as writer:
-            for start in tqdm(range(0, len(df), batch_size), desc='Building scene graphs'):
-                stop = min(start + batch_size, len(df))
-                captions = df.iloc[start:stop][cap_col].tolist()
+            for start in tqdm(range(0, len(df_shard), batch_size),
+                              desc=f'Building scene graphs [shard {shard_index}/{num_shards}]'):
+                stop = min(start + batch_size, len(df_shard))
+                captions = df_shard.iloc[start:stop][cap_col].tolist()
                 graphs = parser.parse(captions, return_text=False, filter_factual_chars=False,
                                       batch_size=SCENE_GRAPH_BATCH_SIZE, **PARSING_OPTIONS)
                 if len(graphs) != len(captions):
                     raise ValueError('FACTUAL did not return one graph per caption.')
                 rows = []
                 for position, graph in enumerate(graphs, start):
-                    original = df.iloc[position]
+                    original = df_shard.iloc[position]
                     try:
                         normalized = linearizer.normalize(graph)
                     except (ValueError, KeyError, TypeError) as error:
-                        raise ValueError(f'Invalid graph at caption_id={position}: {error}') from error
+                        raise ValueError(f'Invalid graph at row {position}: {error}') from error
                     if not normalized['objects']:
-                        raise ValueError(f'Empty graph at caption_id={position}; review caption.')
+                        raise ValueError(f'Empty graph at row {position}; review caption.')
                     rows.append({
-                        'caption_id': position, 'imgid': int(original['imgid']),
+                        'imgid': int(original['imgid']),
                         'filepath': str(original.get('filepath', '')),
                         'filename': str(original.get('filename', '')),
                         'caption': original[cap_col], 'tokens': list(original['tokens']),
@@ -105,6 +116,20 @@ def build_metadata(train_df_path, metadata_path, revision, device, batch_size=25
     except BaseException:
         pending.unlink(missing_ok=True)
         raise
+    return pending
+
+
+def merge_shards(num_shards, metadata_path):
+    """Concatenate per-shard Parquet files written by each rank and remove the shards."""
+    shard_paths = [
+        metadata_path.with_suffix(f'.shard{i}.tmp.parquet') for i in range(num_shards)
+    ]
+    tables = [pq.read_table(p) for p in shard_paths]
+    merged = pa.concat_tables(tables)
+    pending = metadata_path.with_suffix('.tmp.parquet')
+    pq.write_table(merged, pending)
+    for p in shard_paths:
+        p.unlink(missing_ok=True)
     return pending
 
 
@@ -133,18 +158,36 @@ def build_caption_index(metadata_path, index_path, device):
 
 
 def main():
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    from accelerate import PartialState
+    state = PartialState()
+    device = str(state.device)
+
     I2T_KB_METADATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path = I2T_KB_MANIFEST_PATH
-    revision = resolve_model_revision(manifest_path)
-    print(f'FACTUAL={SCENE_GRAPH_MODEL}@{revision}; device={device}')
-    metadata_pending = build_metadata(
-        TRAIN_DF_PATH, I2T_KB_METADATA_PATH, revision, device
+
+    # Only rank 0 resolves (and writes) the manifest to avoid race conditions.
+    if state.is_main_process:
+        revision = resolve_model_revision(I2T_KB_MANIFEST_PATH)
+    state.wait_for_everyone()
+    revision = json.loads(I2T_KB_MANIFEST_PATH.read_text(encoding='utf-8'))['revision']
+
+    print(f'[rank {state.process_index}] FACTUAL={SCENE_GRAPH_MODEL}@{revision}; device={device}')
+
+    build_metadata(
+        TRAIN_DF_PATH, I2T_KB_METADATA_PATH, revision, device,
+        shard_index=state.process_index, num_shards=state.num_processes,
     )
-    index_pending = build_caption_index(metadata_pending, I2T_KB_FAISS_INDEX_PATH, device)
-    metadata_pending.replace(I2T_KB_METADATA_PATH)
-    index_pending.replace(I2T_KB_FAISS_INDEX_PATH)
-    print(f'Saved KB: {I2T_KB_METADATA_PATH}\nCaption index: {I2T_KB_FAISS_INDEX_PATH}')
+
+    state.wait_for_everyone()
+
+    if state.is_main_process:
+        if state.num_processes > 1:
+            pending_meta = merge_shards(state.num_processes, I2T_KB_METADATA_PATH)
+        else:
+            pending_meta = I2T_KB_METADATA_PATH.with_suffix('.tmp.parquet')
+        index_pending = build_caption_index(pending_meta, I2T_KB_FAISS_INDEX_PATH, device)
+        pending_meta.replace(I2T_KB_METADATA_PATH)
+        index_pending.replace(I2T_KB_FAISS_INDEX_PATH)
+        print(f'Saved KB: {I2T_KB_METADATA_PATH}\nCaption index: {I2T_KB_FAISS_INDEX_PATH}')
 
 
 if __name__ == '__main__':

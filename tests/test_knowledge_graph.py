@@ -70,7 +70,7 @@ class KnowledgeGraphTests(unittest.TestCase):
         self.assertEqual(row['triplet_texts'], ['man riding bicycle'])
         bare = self.linearizer.normalize({'entities': [entity('man')], 'relations': []})
         self.assertEqual(bare['triplets'], [])
-        schema = metadata_schema().remove(0).remove(0).remove(0).remove(0).remove(0).remove(0)
+        schema = metadata_schema().remove(0).remove(0).remove(0).remove(0).remove(0)
         self.assertEqual(set(schema.names), set(row))
         pa.Table.from_pylist([row, bare], schema=schema)
 
@@ -111,7 +111,7 @@ class KnowledgeGraphTests(unittest.TestCase):
                                entity('jeans', attributes=('pv:not wear',))],
                   'relations': []}
         row = self.linearizer.normalize(source)
-        self.assertEqual(row['attribute_texts'], ['tables made of wood', 'jeans not worn'])
+        self.assertEqual(row['attribute_texts'], ['tables is made of wood', 'jeans not worn'])
         row = self.linearizer.normalize(graph('glasses', 'pv:not pick up by', 'people',
                                               attrs=()))
         self.assertEqual(row['triplet_texts'], ['glasses not picked up by people'])
@@ -148,8 +148,8 @@ class KnowledgeGraphTests(unittest.TestCase):
         import numpy as np
         from script.shared.retrieve_rag_contexts import process_and_retrieve
         rows = []
-        for caption_id, imgid in enumerate([7, 8]):
-            rows.append(dict(caption_id=caption_id, imgid=imgid, caption='caption',
+        for imgid in [7, 8]:
+            rows.append(dict(imgid=imgid, caption='caption',
                              tokens=['caption'], **self.linearizer.normalize(graph())))
         index = faiss.IndexFlatIP(2)
         index.add(np.array([[1., 0.], [0.9, 0.1]], dtype='float32'))
@@ -161,7 +161,6 @@ class KnowledgeGraphTests(unittest.TestCase):
             process_and_retrieve(source, target, index, pd.DataFrame(rows))
             result = pq.read_table(target).to_pylist()[0]
             self.assertEqual(result['retrieval_imgids'], [8])
-            self.assertEqual(result['retrieval_caption_ids'], [1])
             self.assertEqual(result['triplet_texts'], [['man riding bicycle']])
             self.assertEqual(result['attributes'][0][0]['attribute'], 'red')
             # Existing KBs remain readable without the newly added columns.
@@ -258,7 +257,6 @@ class KnowledgeGraphTests(unittest.TestCase):
                 self.assertEqual(parser_class.call_count, 1)
             data = pq.read_table(pending).to_pylist()
             self.assertEqual(data[0]['tokens'], ['first'])
-            self.assertEqual(data[1]['caption_id'], 1)
             self.assertEqual(data[0]['triplets'][0]['subject'], 'man')
             self.assertFalse(output.with_suffix('.parts').exists())
             with patch('script.shared.build_i2t_kb.model_info') as lookup:
