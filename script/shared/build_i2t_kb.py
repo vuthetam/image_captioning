@@ -26,8 +26,8 @@ from src.shared.knowledge_graph import CheckedParser, GraphLinearizer
 from src.shared.utils import extract_global_embedding
 
 # Use separate batch sizes for scene graph parsing and CLIP embedding.
-SCENE_GRAPH_BATCH_SIZE = 16
-KB_EMBEDDING_BATCH_SIZE = 32
+SCENE_GRAPH_BATCH_SIZE = 64
+KB_EMBEDDING_BATCH_SIZE = 64
 SCENE_GRAPH_MODEL = 'lizhuang144/flan-t5-base-VG-factual-sg-id'
 
 # Fixed extraction protocol, independent of the caption decoder's beam settings.
