@@ -96,6 +96,9 @@ TEST_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "test_image_embeddings.h5"
 # ==========================================
 # 5. KNOWLEDGE BASES & RETRIEVAL RESULTS
 # ==========================================
+# FACTUAL inference batch size per GPU.
+SCENE_GRAPH_BATCH_SIZE = int(os.getenv("SCENE_GRAPH_BATCH_SIZE", "64"))
+
 KB_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
 I2T_KB_FAISS_INDEX_PATH = KB_DIR / "kb_i2t_index.faiss"

@@ -13,6 +13,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
+from accelerate import PartialState
 from tqdm.auto import tqdm
 from transformers import CLIPModel, CLIPProcessor
 from src.shared.config import (
@@ -20,14 +21,14 @@ from src.shared.config import (
     I2T_KB_FAISS_INDEX_PATH,
     I2T_KB_MANIFEST_PATH,
     I2T_KB_METADATA_PATH,
+    SCENE_GRAPH_BATCH_SIZE,
     TRAIN_DF_PATH,
 )
 from src.shared.knowledge_graph import CheckedParser, GraphLinearizer
 from src.shared.utils import extract_global_embedding
 
-# Use separate batch sizes for scene graph parsing and CLIP embedding.
-SCENE_GRAPH_BATCH_SIZE = 64
-KB_EMBEDDING_BATCH_SIZE = 64
+# CLIP caption embedding batch size.
+KB_EMBEDDING_BATCH_SIZE = 32
 SCENE_GRAPH_MODEL = 'lizhuang144/flan-t5-base-VG-factual-sg-id'
 
 # Fixed extraction protocol, independent of the caption decoder's beam settings.
@@ -158,7 +159,6 @@ def build_caption_index(metadata_path, index_path, device):
 
 
 def main():
-    from accelerate import PartialState
     state = PartialState()
     device = str(state.device)
 

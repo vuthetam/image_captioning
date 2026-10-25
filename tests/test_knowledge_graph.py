@@ -111,7 +111,7 @@ class KnowledgeGraphTests(unittest.TestCase):
                                entity('jeans', attributes=('pv:not wear',))],
                   'relations': []}
         row = self.linearizer.normalize(source)
-        self.assertEqual(row['attribute_texts'], ['tables is made of wood', 'jeans not worn'])
+        self.assertEqual(row['attribute_texts'], ['tables made of wood', 'jeans not worn'])
         row = self.linearizer.normalize(graph('glasses', 'pv:not pick up by', 'people',
                                               attrs=()))
         self.assertEqual(row['triplet_texts'], ['glasses not picked up by people'])

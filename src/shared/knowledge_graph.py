@@ -90,8 +90,12 @@ class CheckedParser(SceneGraphParser):
 
         graph_texts = []
         for batch_start in range(0, len(descriptions), batch_size):
-            caption_batch = descriptions[batch_start:batch_start + batch_size]
-            prompts = ["Generate Scene Graph: " + caption.strip()
+            # Remove parentheses, keep their contents, and normalize whitespace.
+            caption_batch = [
+                " ".join(caption.replace("(", " ").replace(")", " ").split())
+                for caption in descriptions[batch_start:batch_start + batch_size]
+            ]
+            prompts = ["Generate Scene Graph: " + caption
                        for caption in caption_batch]
 
             # Do not truncate captions silently; reject a batch that exceeds the configured limit.
@@ -114,12 +118,14 @@ class CheckedParser(SceneGraphParser):
                     num_return_sequences=1, use_cache=True,
                 )
 
+            # Transfer the batch once; decoding and EOS checks reuse the same IDs.
+            generated_ids = generated_ids.cpu().tolist()
             decoded_graphs = self.tokenizer.batch_decode(
                 generated_ids, skip_special_tokens=True,
                 clean_up_tokenization_spaces=True,
             )
             for token_ids, raw_graph in zip(generated_ids, decoded_graphs):
-                if self.tokenizer.eos_token_id not in token_ids.tolist():
+                if self.tokenizer.eos_token_id not in token_ids:
                     raise ValueError(
                         "Graph reached the output limit; adjust PARSING_OPTIONS in build_i2t_kb.py."
                     )
@@ -215,9 +221,8 @@ class GraphLinearizer:
                 elif self.lexicon.hasWord(attribute, self.category.ADJECTIVE):
                     text = self._noun(entity, attribute)
                 else:
-                    # Link attribute to its entity with "is" (mirrors FACTUAL's
-                    # own predicate and reads naturally for all attribute types).
-                    text = f"{self._noun(entity)} is {attribute}"
+                    # Preserve state phrases such as "made of wood" as suffixes.
+                    text = f"{self._noun(entity)} {attribute}"
                 attribute_texts.append(text)
         for edge in graph["relations"]:
             subject_id, object_id = edge["subject"], edge["object"]
