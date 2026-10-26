@@ -18,9 +18,34 @@ class BlipITMScorer:
         self.model.requires_grad_(False)
         self.revision = getattr(self.model.config, "_commit_hash", None)
 
+    @torch.inference_mode()
     def score(self, image_path: str | Path, captions: list[str]) -> list[float]:
-        """Score one image and its captions using the same path as batched scoring."""
-        return self.score_batch([image_path], [captions])[0]
+        """Encode one image once and share its visual tokens across captions."""
+        if not captions:
+            return []
+        if any(not isinstance(caption, str) or not caption.strip() for caption in captions):
+            raise ValueError("BLIP ITM captions must be nonempty strings.")
+
+        with Image.open(image_path) as image, image.convert("RGB") as rgb:
+            pixel_values = self.processor(images=rgb, return_tensors="pt")["pixel_values"]
+        pixel_values = pixel_values.to(device=self.device, dtype=self.model.dtype)
+        image_features = self.model.vision_model(
+            pixel_values=pixel_values, return_dict=True,
+        ).last_hidden_state
+
+        tokens = self.processor(
+            text=captions, padding=True, truncation=True,
+            max_length=self.model.config.text_config.max_position_embeddings,
+            return_tensors="pt",
+        ).to(self.device)
+        fused = self.model.text_encoder(
+            input_ids=tokens["input_ids"],
+            attention_mask=tokens["attention_mask"],
+            encoder_hidden_states=image_features.expand(len(captions), -1, -1),
+            return_dict=True,
+        ).last_hidden_state
+        logits = self.model.itm_head(fused[:, 0, :])
+        return logits.float().softmax(dim=-1)[:, 1].cpu().tolist()
 
     @torch.inference_mode()
     def score_batch(self, image_paths: list[str | Path],

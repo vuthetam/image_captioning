@@ -91,7 +91,7 @@ def build_metadata(train_df_path, metadata_path, revision, device,
         with pq.ParquetWriter(pending, schema) as writer:
             for start in tqdm(range(0, len(df_shard), batch_size),
                               desc=f'Building scene graphs [shard {shard_index}/{num_shards}]',
-                              leave=False):
+                              leave=False, disable=shard_index != 0):
                 stop = min(start + batch_size, len(df_shard))
                 captions = df_shard.iloc[start:stop][cap_col].tolist()
                 graphs = parser.parse(captions, return_text=False, filter_factual_chars=False,

@@ -144,7 +144,8 @@ def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_met
         try:
             with pq.ParquetWriter(shard_path, schema) as writer:
                 for start in tqdm(range(split_start, split_stop, batch_size),
-                                  desc=f"Retrieving + ITM [rank {state.process_index}]", leave=False):
+                                  desc=f"Retrieving + ITM [rank {state.process_index}]",
+                                  leave=False, disable=not state.is_main_process):
                     stop = min(start + batch_size, split_stop)
                     batch_imgids = query_imgids[start:stop]
                     query_features = np.asarray(features[start:stop], dtype=np.float32)
@@ -172,10 +173,14 @@ def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_met
 
                     for itm_start in range(0, len(results), itm_image_batch_size):
                         image_batch = results[itm_start:itm_start + itm_image_batch_size]
-                        itm_scores = scorer.score_batch(
-                            [image_paths[result["imgid"]] for result in image_batch],
-                            [result["captions"] for result in image_batch],
-                        )
+                        if len(image_batch) == 1:
+                            result = image_batch[0]
+                            itm_scores = [scorer.score(image_paths[result["imgid"]], result["captions"])]
+                        else:
+                            itm_scores = scorer.score_batch(
+                                [image_paths[result["imgid"]] for result in image_batch],
+                                [result["captions"] for result in image_batch],
+                            )
                         if len(itm_scores) != len(image_batch):
                             raise ValueError("ITM score group count differs from image batch size.")
                         for result, scores in zip(image_batch, itm_scores):

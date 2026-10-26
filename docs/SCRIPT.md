@@ -173,10 +173,12 @@ Có thể đổi sang `Salesforce/blip-itm-base-coco` mà không sửa code ch�
 với batch tìm kiếm FAISS. Tổng số cặp trong một batch ITM bằng tổng số caption
 truy hồi thực tế của nhóm ảnh đó; ví dụ 2 ảnh, mỗi ảnh 10 caption thì có 20 cặp.
 Batch cuối có thể ít ảnh hơn; ảnh không có caption nhận danh sách điểm rỗng.
+Nhóm chỉ có một ảnh gọi `score()`, dùng `expand()` chia sẻ đặc trưng ảnh cho
+các caption. Nhóm nhiều ảnh gọi `score_batch()`.
 Script dùng `PartialState()` và dtype mặc định của model, không bật autocast hay ép FP16.
 
 Mỗi process load một BLIP trên `state.device`, encode nhóm ảnh có caption trong
-một lượt và giữ toàn bộ CLS/patch features trên GPU. `repeat_interleave()` tạo
+một lượt và giữ toàn bộ CLS/patch features trên GPU. Với nhóm nhiều ảnh, `repeat_interleave()` tạo
 tensor đặc trưng theo đúng các cặp ảnh–caption để text encoder chấm điểm.
 Điểm được tách lại theo từng ảnh và giữ thứ tự CLIP. Features được giải phóng
 khi chấm xong nhóm ảnh; không lưu cache xuống đĩa. VRAM tăng theo tổng số cặp,
