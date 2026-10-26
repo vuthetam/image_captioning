@@ -90,7 +90,8 @@ def build_metadata(train_df_path, metadata_path, revision, device,
     try:
         with pq.ParquetWriter(pending, schema) as writer:
             for start in tqdm(range(0, len(df_shard), batch_size),
-                              desc=f'Building scene graphs [shard {shard_index}/{num_shards}]'):
+                              desc=f'Building scene graphs [shard {shard_index}/{num_shards}]',
+                              leave=False):
                 stop = min(start + batch_size, len(df_shard))
                 captions = df_shard.iloc[start:stop][cap_col].tolist()
                 graphs = parser.parse(captions, return_text=False, filter_factual_chars=False,
@@ -141,7 +142,8 @@ def build_caption_index(metadata_path, index_path, device):
     index = faiss.IndexFlatIP(model.config.projection_dim)
     parquet = pq.ParquetFile(metadata_path)
     for batch in tqdm(parquet.iter_batches(batch_size=KB_EMBEDDING_BATCH_SIZE,
-                                         columns=['caption']), desc='Encoding captions'):
+                                         columns=['caption']), desc='Encoding captions',
+                      leave=False):
         inputs = processor(text=batch.column(0).to_pylist(), padding=True, truncation=True,
                            max_length=model.config.text_config.max_position_embeddings,
                            return_tensors='pt')

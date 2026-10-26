@@ -119,14 +119,20 @@ python -m unittest discover -s tests -v
 ## 4. Retrieve context RAG
 
 ```bash
-python script/shared/retrieve_rag_contexts.py
+python script/shared/retrieve_i2t_kb.py
+```
+
+Trên Kaggle T4 ×2, chia các ảnh cho hai process bằng Accelerate:
+
+```bash
+accelerate launch --multi_gpu --num_processes 2 script/shared/retrieve_i2t_kb.py
 ```
 
 Chạy `python script/shared/extract_image_embeddings.py` trước để tạo image embeddings
 cho train/val/test bằng `RETRIEVAL_ENCODER_MODEL`. Script truy hồi đọc các embedding
 đã lưu từ HDF5, chuẩn hóa L2 và tìm caption tương tự trong text FAISS index trên CPU.
-Script không cần ảnh gốc, visual features, tải CLIP hay chạy Accelerate, và lưu tối đa
-`8` context cho mỗi ảnh vào:
+Sau khi loại caption thuộc chính ảnh truy vấn, script giữ tối đa `I2T_RETRIEVAL_TOP_K=10`
+caption theo điểm CLIP và dùng BLIP ITM chấm từng cặp ảnh–caption. Kết quả lưu vào:
 
 - `artifacts/<retrieval-model-id>/rag_contexts/train_i2t.parquet`
 - `artifacts/<retrieval-model-id>/rag_contexts/val_i2t.parquet`
@@ -141,10 +147,46 @@ truy vấn được loại khỏi kết quả. Trong tên thư mục model, `/` 
 
 Parquet đầu ra có `imgid` của ảnh truy vấn và `retrieval_imgids` là danh sách ID ảnh
 của từng caption truy hồi, cùng thứ tự với `captions`, `tokens`, `objects`
-và `retrieval_scores`. Một ID có thể xuất hiện nhiều lần nếu lấy nhiều caption của ảnh đó.
-Với KB mới, kết quả còn giữ `retrieval_caption_ids`, `attributes`, `triplets`,
+và `clip_scores`. Cột `itm_scores` chứa xác suất match của BLIP,
+`softmax([non_match, match])[1]`, cùng thứ tự với các caption. Bước này bổ sung
+điểm ITM; thứ tự caption vẫn theo CLIP. Một ID có thể xuất hiện nhiều lần nếu lấy nhiều caption của ảnh đó.
+Với KB mới, kết quả còn giữ `attributes`, `triplets`,
 `object_texts`, `attribute_texts`, `triplet_texts`, cùng thứ tự caption truy hồi.
 Script vẫn đọc được KB cũ chưa có các cột bổ sung.
+
+BLIP cần ảnh gốc tại `IMAGES_PATH / filepath / filename`. Đường dẫn được tra từ
+`imgid`, `filepath`, `filename` trong `train_df.parquet`, `val_df.parquet` và
+`test_df.parquet`; không dùng caption tham chiếu của validation/test để chấm điểm.
+Các dependency cần cho bước này: `torch`, `transformers`, `accelerate`, `Pillow`,
+`faiss-cpu`, `h5py`, `numpy`, `pandas`, `pyarrow`, `tqdm` và `python-dotenv`.
+
+Cấu hình trong `src/shared/config.py`, có thể ghi đè bằng môi trường hoặc `.env`:
+
+```dotenv
+BLIP_ITM_MODEL_ID=Salesforce/blip-itm-large-coco
+I2T_RETRIEVAL_TOP_K=10
+BLIP_ITM_IMAGE_BATCH_SIZE=2
+```
+
+Có thể đổi sang `Salesforce/blip-itm-base-coco` mà không sửa code chấm điểm.
+`BLIP_ITM_IMAGE_BATCH_SIZE` là số ảnh query chấm cùng lúc trên mỗi GPU, độc lập
+với batch tìm kiếm FAISS. Tổng số cặp trong một batch ITM bằng tổng số caption
+truy hồi thực tế của nhóm ảnh đó; ví dụ 2 ảnh, mỗi ảnh 10 caption thì có 20 cặp.
+Batch cuối có thể ít ảnh hơn; ảnh không có caption nhận danh sách điểm rỗng.
+Script dùng `PartialState()` và dtype mặc định của model, không bật autocast hay ép FP16.
+
+Mỗi process load một BLIP trên `state.device`, encode nhóm ảnh có caption trong
+một lượt và giữ toàn bộ CLS/patch features trên GPU. `repeat_interleave()` tạo
+tensor đặc trưng theo đúng các cặp ảnh–caption để text encoder chấm điểm.
+Điểm được tách lại theo từng ảnh và giữ thứ tự CLIP. Features được giải phóng
+khi chấm xong nhóm ảnh; không lưu cache xuống đĩa. VRAM tăng theo tổng số cặp,
+nên bắt đầu với 2 ảnh/GPU rồi đo tốc độ và VRAM trước khi tăng batch.
+
+Các process xử lý những đoạn ảnh liên tiếp, ghi từng batch vào Parquet shard
+tạm riêng. Rank 0 ghép shard theo thứ tự ảnh gốc trong HDF5 và chỉ thay file đích
+khi ghi xong. Metadata của Parquet lưu ID checkpoint BLIP, revision nếu có,
+encoder truy hồi và định nghĩa điểm ITM. Không chạy đồng thời nhiều lệnh truy hồi
+ghi vào cùng các file output.
 
 ## 5. Train và generate text RAG
 
