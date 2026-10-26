@@ -131,25 +131,23 @@ class CheckedParser(SceneGraphParser):
                     )
 
                 raw_graph = raw_graph.replace("Generate Scene Graph:", "").strip()
-                fact_texts = re.findall(r"\(([^()]*)\)", raw_graph)
-                text_outside_facts = re.sub(r"\([^()]*\)", "", raw_graph)
-                text_outside_facts = text_outside_facts.strip(" ,\n\t")
 
-                malformed = not fact_texts or bool(text_outside_facts)
-                for fact_text in fact_texts:
-                    raw_parts = fact_text.split(",")
-                    parts = [p.strip() for p in raw_parts if p.strip()]
-                    has_wrong_number_of_parts = len(parts) < 1
-                    has_empty_part = any(not p.strip() for p in raw_parts)
-                    if has_wrong_number_of_parts or has_empty_part:
-                        malformed = True
-                        break
+                if "(" not in raw_graph or ")" not in raw_graph or not raw_graph.startswith("("):
+                    raise ValueError(f"Malformed FACTUAL output: {raw_graph!r}")
 
-                if malformed:
+                # Robust extraction: split by '), (' delimiter and strip stray parentheses
+                # from each piece. This handles nested parens, unclosed parens, and syntax noise.
+                valid_facts = []
+                for piece in re.split(r"\)\s*,\s*\(", raw_graph):
+                    parts = [p.strip() for p in piece.replace("(", "").replace(")", "").split(",") if p.strip()]
+                    if parts:
+                        valid_facts.append(f"( {', '.join(parts)} )")
+
+                if not valid_facts:
                     raise ValueError(f"Malformed FACTUAL output: {raw_graph!r}")
 
                 cleaned_graph = clean_graph_string(
-                    space_out_symbols_in_graph(raw_graph)
+                    space_out_symbols_in_graph(" , ".join(valid_facts))
                 )
                 graph_texts.append(cleaned_graph)
 
