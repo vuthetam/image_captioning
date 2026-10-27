@@ -32,11 +32,12 @@ RUN_MODE = os.getenv("RUN_MODE", "baseline")
 # ==========================================
 # 2. ENCODER MODELS
 # ==========================================
-VISUAL_ENCODER_MODEL = os.getenv("VISUAL_ENCODER_MODEL", "openai/clip-vit-base-patch16")
-RETRIEVAL_ENCODER_MODEL = os.getenv("RETRIEVAL_ENCODER_MODEL", VISUAL_ENCODER_MODEL)
+VISUAL_ENCODER_MODEL = os.getenv("VISUAL_ENCODER_MODEL", "openai/clip-vit-base-patch32")
+RETRIEVAL_OPENCLIP_MODEL_ID = os.getenv("RETRIEVAL_OPENCLIP_MODEL_ID", "hf-hub:timm/vit_large_patch14_clip_224.openai")
+RETRIEVAL_IMAGE_BATCH_SIZE = int(os.getenv("RETRIEVAL_IMAGE_BATCH_SIZE", "32"))
 BLIP_ITM_MODEL_ID = os.getenv("BLIP_ITM_MODEL_ID", "Salesforce/blip-itm-base-coco")
 VISUAL_SAFE_NAME = VISUAL_ENCODER_MODEL.replace("/", "-")
-RETRIEVAL_SAFE_NAME = RETRIEVAL_ENCODER_MODEL.replace("/", "-")
+RETRIEVAL_SAFE_NAME = RETRIEVAL_OPENCLIP_MODEL_ID.removeprefix("hf-hub:").replace("/", "-")
 
 
 # ==========================================
@@ -100,7 +101,7 @@ TEST_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "test_image_embeddings.h5"
 # Number of captions retrieved and scored with BLIP ITM per query image.
 I2T_RETRIEVAL_TOP_K = int(os.getenv("I2T_RETRIEVAL_TOP_K", "10"))
 # Number of query images scored together with BLIP ITM per GPU.
-BLIP_ITM_IMAGE_BATCH_SIZE = int(os.getenv("BLIP_ITM_IMAGE_BATCH_SIZE", "2"))
+BLIP_ITM_IMAGE_BATCH_SIZE = int(os.getenv("BLIP_ITM_IMAGE_BATCH_SIZE", "1"))
 
 # FACTUAL inference batch size per GPU.
 SCENE_GRAPH_BATCH_SIZE = int(os.getenv("SCENE_GRAPH_BATCH_SIZE", "64"))

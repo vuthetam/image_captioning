@@ -47,8 +47,33 @@ artifacts/vocab_v3.json
 
 ## 3. Xây dựng Knowledge Base cho RAG
 
+Retrieval dùng **OpenCLIP** cho cả image embeddings và text embeddings. Cài thêm:
+
 ```bash
-python script/shared/build_kb.py
+pip install -r requirements-retrieval.txt
+```
+
+Chọn một checkpoint trong `.env` bằng `RETRIEVAL_OPENCLIP_MODEL_ID`:
+
+| Checkpoint | Model ID |
+| --- | --- |
+| OpenAI ViT-B/32 gốc, 224 | `hf-hub:timm/vit_base_patch32_clip_224.openai` |
+| OpenAI ViT-L/14 gốc, 224 (mặc định) | `hf-hub:timm/vit_large_patch14_clip_224.openai` |
+| Apple DFN2B ViT-L/14, 224 | `hf-hub:apple/DFN2B-CLIP-ViT-L-14` |
+| Apple DFN5B ViT-H/14, 224 | `hf-hub:apple/DFN5B-CLIP-ViT-H-14` |
+
+ID được truyền trực tiếp cho OpenCLIP, gồm cả prefix `hf-hub:`.
+Image transform và text tokenizer được lấy cùng checkpoint.
+`VISUAL_ENCODER_MODEL` vẫn dùng Transformers để lấy patch/CLS features cho captioning.
+
+Khi đổi checkpoint, hoặc chuyển từ retrieval bằng Transformers sang OpenCLIP,
+cần tạo lại image embeddings, text FAISS index và các kết quả retrieval. Nếu dùng
+I2I, cũng tạo lại image FAISS index. Cả ảnh và text phải dùng cùng checkpoint.
+Giảm `RETRIEVAL_IMAGE_BATCH_SIZE` trong `.env` nếu thiếu VRAM khi dùng H/14
+(mặc định 64; có thể bắt đầu với 16).
+
+```bash
+python script/shared/build_i2t_kb.py
 ```
 
 Chuẩn bị thêm các dependency cho bước xây KB:
@@ -83,7 +108,7 @@ giúp chọn thuộc tính tính từ đứng trước danh từ; trạng thái 
 xác tuyệt đối. Cần kiểm tra mẫu thật trước khi dùng các cụm cho thí nghiệm truy hồi.
 
 Cấu hình trong `src/shared/config.py`: đường dẫn train/KB
-và `RETRIEVAL_ENCODER_MODEL`. Batch size được đặt cố định trong `build_kb.py`:
+và `RETRIEVAL_OPENCLIP_MODEL_ID`. Batch size được đặt cố định trong `build_kb.py`:
 FACTUAL dùng 32, CLIP dùng 64.
 Script tự chọn CUDA nếu có, xử lý toàn bộ train split và ghi vào đường dẫn KB.
 Giao thức trích xuất cố định trong `PARSING_OPTIONS` ở `build_kb.py`:
@@ -100,7 +125,7 @@ chunk hay tiếp tục từ batch đã xử lý. Nếu bị ngắt, lần chạy
 Trên Kaggle cần Internet khi tải checkpoint/package lần đầu.
 
 Sau khi xây metadata, script tạo text embedding **của caption gốc** bằng
-`RETRIEVAL_ENCODER_MODEL`, chuẩn hóa vector và lưu:
+`RETRIEVAL_OPENCLIP_MODEL_ID`, chuẩn hóa vector và lưu:
 
 - `artifacts/<retrieval-model-id>/kb/kb_i2t_index.faiss`
 - `artifacts/<retrieval-model-id>/kb/kb_i2t_metadata.parquet`
@@ -129,7 +154,7 @@ accelerate launch --multi_gpu --num_processes 2 script/shared/retrieve_i2t_kb.py
 ```
 
 Chạy `python script/shared/extract_image_embeddings.py` trước để tạo image embeddings
-cho train/val/test bằng `RETRIEVAL_ENCODER_MODEL`. Script truy hồi đọc các embedding
+cho train/val/test bằng `RETRIEVAL_OPENCLIP_MODEL_ID`. Script truy hồi đọc các embedding
 đã lưu từ HDF5, chuẩn hóa L2 và tìm caption tương tự trong text FAISS index trên CPU.
 Sau khi loại caption thuộc chính ảnh truy vấn, script giữ tối đa `I2T_RETRIEVAL_TOP_K=10`
 caption theo điểm CLIP và dùng BLIP ITM chấm từng cặp ảnh–caption. Kết quả lưu vào:
@@ -142,8 +167,8 @@ caption theo điểm CLIP và dùng BLIP ITM chấm từng cặp ảnh–caption
 `test_image_embeddings.h5` trong `IMAGE_EMBEDDINGS_DIR`, cùng `kb_i2t_index.faiss`
 và `kb_i2t_metadata.parquet` trong thư mục KB của cùng model. Mỗi file HDF5 có
 `imgids [N]` và `features [N, D]` đã qua CLIP projection. Caption thuộc chính ảnh
-truy vấn được loại khỏi kết quả. Trong tên thư mục model, `/` được thay bằng `-`
-(ví dụ `openai-clip-vit-large-patch14`).
+truy vấn được loại khỏi kết quả. Trong tên thư mục model, bỏ prefix `hf-hub:`
+và thay `/` bằng `-` (ví dụ `timm-vit_large_patch14_clip_224.openai`).
 
 Parquet đầu ra có `imgid` của ảnh truy vấn và `retrieval_imgids` là danh sách ID ảnh
 của từng caption truy hồi, cùng thứ tự với `captions`, `tokens`, `objects`
@@ -157,7 +182,7 @@ Script vẫn đọc được KB cũ chưa có các cột bổ sung.
 BLIP cần ảnh gốc tại `IMAGES_PATH / filepath / filename`. Đường dẫn được tra từ
 `imgid`, `filepath`, `filename` trong `train_df.parquet`, `val_df.parquet` và
 `test_df.parquet`; không dùng caption tham chiếu của validation/test để chấm điểm.
-Các dependency cần cho bước này: `torch`, `transformers`, `accelerate`, `Pillow`,
+Các dependency cần cho bước này: `torch`, `transformers`, `open_clip_torch`, `accelerate`, `Pillow`,
 `faiss-cpu`, `h5py`, `numpy`, `pandas`, `pyarrow`, `tqdm` và `python-dotenv`.
 
 Cấu hình trong `src/shared/config.py`, có thể ghi đè bằng môi trường hoặc `.env`:

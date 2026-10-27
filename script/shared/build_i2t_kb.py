@@ -15,9 +15,8 @@ import pyarrow.parquet as pq
 import torch
 from accelerate import PartialState
 from tqdm.auto import tqdm
-from transformers import CLIPModel, CLIPProcessor
 from src.shared.config import (
-    RETRIEVAL_ENCODER_MODEL,
+    RETRIEVAL_OPENCLIP_MODEL_ID,
     I2T_KB_FAISS_INDEX_PATH,
     I2T_KB_MANIFEST_PATH,
     I2T_KB_METADATA_PATH,
@@ -25,7 +24,7 @@ from src.shared.config import (
     TRAIN_DF_PATH,
 )
 from src.shared.knowledge_graph import CheckedParser, GraphLinearizer
-from src.shared.utils import extract_global_embedding
+from src.shared.openclip_encoder import load_openclip_retrieval_components
 
 # CLIP caption embedding batch size.
 KB_EMBEDDING_BATCH_SIZE = 32
@@ -137,24 +136,19 @@ def merge_shards(num_shards, metadata_path):
 
 def build_caption_index(metadata_path, index_path, device):
     """Index full captions; semantic units are stored for subsequent experiments."""
-    model = CLIPModel.from_pretrained(RETRIEVAL_ENCODER_MODEL).to(device).eval()
-    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL)
-    index = faiss.IndexFlatIP(model.config.projection_dim)
-    parquet = pq.ParquetFile(metadata_path)
-    for batch in tqdm(parquet.iter_batches(batch_size=KB_EMBEDDING_BATCH_SIZE,
-                                         columns=['caption']), desc='Encoding captions',
-                      leave=False):
-        inputs = processor(text=batch.column(0).to_pylist(), padding=True, truncation=True,
-                           max_length=model.config.text_config.max_position_embeddings,
-                           return_tensors='pt')
-        with torch.inference_mode():
-            features = extract_global_embedding(model.get_text_features(
-                **{k: v.to(device) for k, v in inputs.items()}
-            )).float()
-            features = torch.nn.functional.normalize(features, dim=-1)
-        index.add(features.cpu().numpy())
-    if index.ntotal != parquet.metadata.num_rows:
-        raise ValueError('Index and metadata row counts differ.')
+    model, _, tokenizer = load_openclip_retrieval_components(RETRIEVAL_OPENCLIP_MODEL_ID, device=device)
+    index = faiss.IndexFlatIP(model.visual.output_dim)
+    with pq.ParquetFile(metadata_path) as parquet:
+        for batch in tqdm(parquet.iter_batches(batch_size=KB_EMBEDDING_BATCH_SIZE,
+                                             columns=['caption']), desc='Encoding captions',
+                          leave=False):
+            tokens = tokenizer(batch.column(0).to_pylist()).to(device)
+            with torch.inference_mode():
+                features = model.encode_text(tokens).float()
+                features = torch.nn.functional.normalize(features, dim=-1)
+            index.add(features.cpu().numpy())
+        if index.ntotal != parquet.metadata.num_rows:
+            raise ValueError('Index and metadata row counts differ.')
     pending = index_path.with_suffix('.tmp.faiss')
     faiss.write_index(index, str(pending))
     return pending

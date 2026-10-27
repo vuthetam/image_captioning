@@ -22,18 +22,18 @@ from src.shared.config import (
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH,
     TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
     IMAGES_DIR,
-    RETRIEVAL_ENCODER_MODEL ,
+    RETRIEVAL_OPENCLIP_MODEL_ID,
+    RETRIEVAL_IMAGE_BATCH_SIZE,
     NUM_WORKERS
 )
-from transformers import CLIPProcessor
 from src.shared.dataset import RawImageDataset
 
-def process_and_save(df_path, output_h5_path, model, processor, device, batch_size=64):
+def process_and_save(df_path, output_h5_path, model, transform, device, batch_size=64):
     print(f"\nĐang xử lý {df_path.name}...")
         
     df = pd.read_parquet(df_path)
     df_unique = df.drop_duplicates(subset=["imgid"]).reset_index(drop=True)
-    dataset = RawImageDataset(df_unique, IMAGES_DIR, processor=processor)
+    dataset = RawImageDataset(df_unique, IMAGES_DIR, transform=transform)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=NUM_WORKERS, shuffle=False)
     
     output_h5_path.parent.mkdir(parents=True, exist_ok=True)
@@ -42,7 +42,7 @@ def process_and_save(df_path, output_h5_path, model, processor, device, batch_si
         h5f.create_dataset("imgids", data=df_unique["imgid"].to_numpy(dtype="int64"))
         h5f.attrs["feature_layout"] = "features[i] belongs to imgids[i]"
         h5f.attrs["chunk_rows"] = 1
-        h5f.attrs["model_id"] = RETRIEVAL_ENCODER_MODEL 
+        h5f.attrs["model_id"] = RETRIEVAL_OPENCLIP_MODEL_ID
 
         feature_store = None
         current_idx = 0
@@ -60,11 +60,17 @@ def process_and_save(df_path, output_h5_path, model, processor, device, batch_si
             
             with torch.no_grad():
                 if device.type == 'cuda':
-                    with torch.autocast(device_type='cuda', dtype=torch.float16):
+                    with torch.autocast(device_type=device.type):
                         # Trích xuất image embeddings (đã qua lớp projection)
                         features = model(pixel_values)
                 else:
                     features = model(pixel_values)
+
+                if features.shape[0] != len(batch_imgids):
+                    raise ValueError(
+                        f"Số embedding ({features.shape[0]}) không khớp số imgid "
+                        f"({len(batch_imgids)}) tại index {current_idx}!"
+                    )
                     
                 # Ép kiểu chuẩn về float16 để ghi H5
                 features = features.to(torch.float16).cpu().numpy()
@@ -90,15 +96,13 @@ def main():
     num_gpus = torch.cuda.device_count()
     
     print("Khởi động môi trường...")
-    print(f"Đang tải CLIPImageEmbeddingEncoder ({RETRIEVAL_ENCODER_MODEL })...")
+    print(f"Đang tải OpenCLIP ({RETRIEVAL_OPENCLIP_MODEL_ID})...")
         
-    model_kwargs = {"torch_dtype": torch.float16} if device.type == "cuda" else {}
-    model = CLIPImageEmbeddingEncoder(**model_kwargs).eval().to(device)
+    model = CLIPImageEmbeddingEncoder(device=device).eval()
+    transform = model.preprocess
     
     if num_gpus > 1:
         model = nn.DataParallel(model)
-    
-    processor = CLIPProcessor.from_pretrained(RETRIEVAL_ENCODER_MODEL )
     
     datasets = [
         (TRAIN_DF_PATH, TRAIN_IMAGE_EMBEDDINGS_PATH),
@@ -108,14 +112,7 @@ def main():
     
     for df_path, h5_path in datasets:
         if df_path.exists():
-            process_and_save(
-                df_path,
-                h5_path,
-                model,
-                processor,
-                device,
-                batch_size=64,
-            )
+            process_and_save(df_path, h5_path, model, transform, device, batch_size=RETRIEVAL_IMAGE_BATCH_SIZE)
         else:
             print(f"Cảnh báo: Không tìm thấy {df_path}")
 

@@ -153,24 +153,47 @@ class KnowledgeGraphTests(unittest.TestCase):
                              tokens=['caption'], **self.linearizer.normalize(graph())))
         index = faiss.IndexFlatIP(2)
         index.add(np.array([[1., 0.], [0.9, 0.1]], dtype='float32'))
+        kb_metadata = pd.DataFrame(rows)
+        scorer = SimpleNamespace(
+            model_id='test-blip-itm', revision='test-revision',
+            score=Mock(return_value=[0.75]),
+        )
+        state = SimpleNamespace(
+            process_index=0, num_processes=1, is_main_process=True,
+            wait_for_everyone=Mock(),
+        )
         with tempfile.TemporaryDirectory() as directory:
             source, target = Path(directory) / 'images.h5', Path(directory) / 'i2t.parquet'
+            image_paths = {7: Path(directory) / 'query.jpg'}
             with h5py.File(source, 'w') as handle:
                 handle['imgids'] = [7]
                 handle['features'] = np.array([[1., 0.]], dtype='float32')
-            process_and_retrieve(source, target, index, pd.DataFrame(rows))
-            result = pq.read_table(target).to_pylist()[0]
+            process_and_retrieve(
+                source, target, index, kb_metadata, image_paths, scorer, state,
+                pa.Table.from_pandas(kb_metadata, preserve_index=False).schema,
+            )
+            table = pq.read_table(target)
+            result = table.to_pylist()[0]
             self.assertEqual(result['retrieval_imgids'], [8])
             self.assertEqual(result['triplet_texts'], [['man riding bicycle']])
             self.assertEqual(result['attributes'][0][0]['attribute'], 'red')
+            self.assertEqual(result['itm_scores'], [0.75])
+            self.assertEqual(table.schema.metadata[b'blip_itm_model_id'], b'test-blip-itm')
+            scorer.score.assert_called_once_with(image_paths[7], ['caption'])
+            scorer.score.reset_mock()
             # Existing KBs remain readable without the newly added columns.
-            legacy = pd.DataFrame(rows)[['imgid', 'caption', 'tokens', 'objects']]
+            legacy = kb_metadata[['imgid', 'caption', 'tokens', 'objects']].copy()
             legacy['relations'] = [['ride'], ['ride']]
-            process_and_retrieve(source, target, index, legacy)
+            process_and_retrieve(
+                source, target, index, legacy, image_paths, scorer, state,
+                pa.Table.from_pandas(legacy, preserve_index=False).schema,
+            )
             result = pq.read_table(target).to_pylist()[0]
             self.assertEqual(result['retrieval_imgids'], [8])
             self.assertNotIn('triplet_texts', result)
             self.assertNotIn('relations', result)
+            self.assertEqual(result['itm_scores'], [0.75])
+            scorer.score.assert_called_once_with(image_paths[7], ['caption'])
 
     def make_parser(self, tokenizer=None, model=None):
         with patch('transformers.AutoTokenizer.from_pretrained', return_value=tokenizer or Tokenizer()), \

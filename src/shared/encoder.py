@@ -1,11 +1,25 @@
 import torch
 from torch import Tensor, nn
-from transformers import CLIPVisionModel, CLIPModel
+from transformers import CLIPVisionModel
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
-from src.shared.config import VISUAL_ENCODER_MODEL, RETRIEVAL_ENCODER_MODEL
-from src.shared.utils import extract_global_embedding
+from src.shared.config import VISUAL_ENCODER_MODEL, RETRIEVAL_OPENCLIP_MODEL_ID
+from src.shared.openclip_encoder import load_openclip_retrieval_components
+
+
+def create_clip_transform():
+    return transforms.Compose(
+        [
+            transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC, antialias=True),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.48145466, 0.4578275, 0.40821073],
+                std=[0.26862954, 0.26130258, 0.27577711],
+            ),
+        ]
+    )
+
 
 class CLIPVisualEncoder(nn.Module):
     def __init__(self, **kwargs) -> None:
@@ -27,28 +41,18 @@ class CLIPVisualEncoder(nn.Module):
 
 
 class CLIPImageEmbeddingEncoder(nn.Module):
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, *, device="cpu", precision="fp32") -> None:
         super().__init__()
-        self.model = CLIPModel.from_pretrained(RETRIEVAL_ENCODER_MODEL, **kwargs)
-        self.model.requires_grad_(False)
-        self.output_dim = self.model.projection_dim
+        self.model, self.preprocess, _ = load_openclip_retrieval_components(
+            RETRIEVAL_OPENCLIP_MODEL_ID, device=device, precision=precision,
+        )
+        self.output_dim = self.model.visual.output_dim
 
     def forward(self, pixel_values: Tensor) -> Tensor:
         self.model.eval()
         with torch.no_grad():
-            outputs = self.model.get_image_features(pixel_values=pixel_values)
-        return extract_global_embedding(outputs)
+            return self.model.encode_image(pixel_values)
 
 
-def create_clip_transform():
-    return transforms.Compose(
-        [
-            transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC, antialias=True),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711],
-            ),
-        ]
-    )
+
 

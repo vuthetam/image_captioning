@@ -26,7 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.config import (
     TRAIN_IMAGE_EMBEDDINGS_PATH, VAL_IMAGE_EMBEDDINGS_PATH, TEST_IMAGE_EMBEDDINGS_PATH,
     TRAIN_I2T_PATH, VAL_I2T_PATH, TEST_I2T_PATH,
-    RETRIEVAL_ENCODER_MODEL, I2T_KB_FAISS_INDEX_PATH, I2T_KB_METADATA_PATH,
+    RETRIEVAL_OPENCLIP_MODEL_ID, I2T_KB_FAISS_INDEX_PATH, I2T_KB_METADATA_PATH,
     TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH, IMAGES_DIR,
     BLIP_ITM_MODEL_ID, I2T_RETRIEVAL_TOP_K, BLIP_ITM_IMAGE_BATCH_SIZE,
 )
@@ -60,7 +60,7 @@ def context_schema(kb_schema, column_pairs, scorer):
     fields.extend(pa.field(name, pa.list_(pa.float32()))
                   for name in ("clip_scores", "itm_scores"))
     return pa.schema(fields, metadata={
-        b"retrieval_encoder_model": RETRIEVAL_ENCODER_MODEL.encode("utf-8"),
+        b"retrieval_encoder_model": RETRIEVAL_OPENCLIP_MODEL_ID.encode("utf-8"),
         b"blip_itm_model_id": scorer.model_id.encode("utf-8"),
         b"blip_itm_revision": (scorer.revision or "unknown").encode("utf-8"),
         b"itm_score_definition": b"softmax([non_match, match])[1]",
@@ -122,10 +122,10 @@ def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_met
         stored_model = h5f.attrs.get("model_id")
         if isinstance(stored_model, bytes):
             stored_model = stored_model.decode("utf-8")
-        if stored_model is not None and stored_model != RETRIEVAL_ENCODER_MODEL:
+        if stored_model is not None and stored_model != RETRIEVAL_OPENCLIP_MODEL_ID:
             raise ValueError(
                 f"Model của {img_embeddings_path} ({stored_model}) không khớp "
-                f"RETRIEVAL_ENCODER_MODEL ({RETRIEVAL_ENCODER_MODEL})."
+                f"RETRIEVAL_OPENCLIP_MODEL_ID ({RETRIEVAL_OPENCLIP_MODEL_ID})."
             )
 
         query_imgids = np.asarray(h5f["imgids"], dtype=np.int64)
@@ -135,7 +135,7 @@ def process_and_retrieve(img_embeddings_path, output_parquet_path, index, kb_met
         if features.shape[1] != index.d:
             raise ValueError(
                 f"Image embeddings có {features.shape[1]} chiều nhưng text index có {index.d} chiều. "
-                "Hãy dùng image embeddings và text KB từ cùng RETRIEVAL_ENCODER_MODEL."
+                "Hãy dùng image embeddings và text KB từ cùng RETRIEVAL_OPENCLIP_MODEL_ID."
             )
 
         # Contiguous, disjoint shards also keep HDF5 reads sequential on each rank.
@@ -215,7 +215,7 @@ def main():
         if not path.is_file():
             raise FileNotFoundError(f"Không tìm thấy {path}")
 
-    print(f"[rank {state.process_index}] CLIP/FAISS={RETRIEVAL_ENCODER_MODEL} (CPU); "
+    print(f"[rank {state.process_index}] CLIP/FAISS={RETRIEVAL_OPENCLIP_MODEL_ID} (CPU); "
           f"BLIP ITM={BLIP_ITM_MODEL_ID}; device={state.device}")
     index = faiss.read_index(str(I2T_KB_FAISS_INDEX_PATH))
     kb_metadata = pd.read_parquet(I2T_KB_METADATA_PATH)
