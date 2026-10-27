@@ -105,7 +105,7 @@ class CheckedParser(SceneGraphParser):
             input_length = tokenized["input_ids"].shape[1]
             if input_length > max_input_len:
                 raise ValueError(
-                    "Caption exceeds max_input_len; adjust PARSING_OPTIONS in build_i2t_kb.py."
+                    "Caption exceeds max_input_len; adjust PARSING_OPTIONS in build_kb_i2t_metadata.py."
                 )
 
             with torch.inference_mode():
@@ -127,7 +127,7 @@ class CheckedParser(SceneGraphParser):
             for token_ids, raw_graph in zip(generated_ids, decoded_graphs):
                 if self.tokenizer.eos_token_id not in token_ids:
                     raise ValueError(
-                        "Graph reached the output limit; adjust PARSING_OPTIONS in build_i2t_kb.py."
+                        "Graph reached the output limit; adjust PARSING_OPTIONS in build_kb_i2t_metadata.py."
                     )
 
                 raw_graph = raw_graph.replace("Generate Scene Graph:", "").strip()

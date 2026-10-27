@@ -30,6 +30,7 @@ from src.shared.config import (
     TEST_DF_PATH,
     TEST_I2T_PATH,
     TEST_VISUAL_FEATURES_PATH,
+    TEXT_RAG_CAPTION_SORT_BY,
     TOP_K_CAPTIONS,
     VOCAB_PATH,
 )
@@ -54,6 +55,7 @@ def main() -> None:
         TEST_I2T_PATH,
         MAX_CTX_LENGTH,
         TOP_K_CAPTIONS,
+        caption_sort_by=TEXT_RAG_CAPTION_SORT_BY,
     )
     test_loader = DataLoader(
         test_dataset,
@@ -80,7 +82,9 @@ def main() -> None:
     epoch, _, _ = load_checkpoint(
         BEST_CHECKPOINT_PATH, model
     )
-    accelerator.print(f"Loaded checkpoint from epoch {epoch}.")
+    accelerator.print(
+        f"Loaded checkpoint from epoch {epoch}; caption sort={TEXT_RAG_CAPTION_SORT_BY}."
+    )
 
     model, test_loader = accelerator.prepare(model, test_loader)
     caption_dict = generate_captions(

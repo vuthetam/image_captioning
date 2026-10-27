@@ -30,6 +30,7 @@ from src.shared.config import (
     NLAYERS,
     NUM_EPOCHS,
     NUM_WORKERS,
+    TEXT_RAG_CAPTION_SORT_BY,
     TOP_K_CAPTIONS,
     TRAIN_DF_PATH,
     TRAIN_I2T_PATH,
@@ -72,6 +73,7 @@ def main() -> None:
         MAX_LENGTH,
         MAX_CTX_LENGTH,
         TOP_K_CAPTIONS,
+        caption_sort_by=TEXT_RAG_CAPTION_SORT_BY,
     )
     val_dataset = RAGFeatureCaptionDataset(
         val_df,
@@ -81,6 +83,7 @@ def main() -> None:
         MAX_LENGTH,
         MAX_CTX_LENGTH,
         TOP_K_CAPTIONS,
+        caption_sort_by=TEXT_RAG_CAPTION_SORT_BY,
     )
     train_generator = create_seeded_generator(42)
     train_loader = DataLoader(
@@ -154,6 +157,7 @@ def main() -> None:
     )
     accelerator.print(
         f"train rows={len(train_dataset):,}; val rows={len(val_dataset):,}; "
+        f"caption sort={TEXT_RAG_CAPTION_SORT_BY}; "
         f"feature shape={train_dataset.feature_shape}; trainable params="
         f"{sum(parameter.numel() for parameter in trainable_parameters(model)):,}"
     )

@@ -33,7 +33,7 @@ RUN_MODE = os.getenv("RUN_MODE", "baseline")
 # 2. ENCODER MODELS
 # ==========================================
 VISUAL_ENCODER_MODEL = os.getenv("VISUAL_ENCODER_MODEL", "openai/clip-vit-base-patch32")
-RETRIEVAL_OPENCLIP_MODEL_ID = os.getenv("RETRIEVAL_OPENCLIP_MODEL_ID", "hf-hub:timm/vit_large_patch14_clip_224.openai")
+RETRIEVAL_OPENCLIP_MODEL_ID = os.getenv("RETRIEVAL_OPENCLIP_MODEL_ID", "hf-hub:apple/DFN5B-CLIP-ViT-H-14")
 RETRIEVAL_IMAGE_BATCH_SIZE = int(os.getenv("RETRIEVAL_IMAGE_BATCH_SIZE", "32"))
 BLIP_ITM_MODEL_ID = os.getenv("BLIP_ITM_MODEL_ID", "Salesforce/blip-itm-base-coco")
 VISUAL_SAFE_NAME = VISUAL_ENCODER_MODEL.replace("/", "-")
@@ -106,6 +106,9 @@ BLIP_ITM_IMAGE_BATCH_SIZE = int(os.getenv("BLIP_ITM_IMAGE_BATCH_SIZE", "1"))
 # FACTUAL inference batch size per GPU.
 SCENE_GRAPH_BATCH_SIZE = int(os.getenv("SCENE_GRAPH_BATCH_SIZE", "64"))
 
+# Number of captions encoded per batch when building the I2T FAISS index.
+KB_I2T_INDEX_BATCH_SIZE = int(os.getenv("I2T_INDEX_BATCH_SIZE", "32"))
+
 KB_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
 I2T_KB_FAISS_INDEX_PATH = KB_DIR / "kb_i2t_index.faiss"
@@ -131,10 +134,10 @@ TEST_I2I_PATH = RAG_CONTEXTS_DIR / "test_i2i.parquet"
 # ==========================================
 # 6. EXPERIMENT OUTPUTS & CHECKPOINTS
 # ==========================================
-RUN_ARTIFACTS_DIR = ARTIFACTS_DIR / RUN_MODE
-safe_mkdir(RUN_ARTIFACTS_DIR)
-PREDICTIONS_PATH = RUN_ARTIFACTS_DIR / "predictions.json"
-METRICS_PATH = RUN_ARTIFACTS_DIR / "metrics.json"
+RESULT_DIR = ARTIFACTS_DIR / "results" / RUN_MODE
+safe_mkdir(RESULT_DIR)
+PREDICTIONS_PATH = RESULT_DIR / "predictions.json"
+METRICS_PATH = RESULT_DIR / "metrics.json"
 
 CHECKPOINTS_DIR = Path(os.getenv("CHECKPOINTS_DIR", str(ROOT_PATH / "checkpoints")))
 RUN_CHECKPOINT_DIR = CHECKPOINTS_DIR / RUN_MODE
@@ -180,6 +183,8 @@ TOP_K_RAG_IMAGES = int(os.getenv("TOP_K_RAG_IMAGES", "4"))
 # Text RAG and multimodal RAG.
 CTX_NLAYERS = int(os.getenv("CTX_NLAYERS", "2"))
 TOP_K_CAPTIONS = int(os.getenv("TOP_K_CAPTIONS", "4"))
+# Text RAG: rank by descending ITM by default; 'clip' preserves retrieval order.
+TEXT_RAG_CAPTION_SORT_BY = os.getenv("TEXT_RAG_CAPTION_SORT_BY", "itm").strip().lower()
 CTX_TOKENS_PER_CAPTION = int(os.getenv("CTX_TOKENS_PER_CAPTION", "22"))
 MAX_CTX_LENGTH = int(
     os.getenv(

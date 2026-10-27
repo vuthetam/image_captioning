@@ -1,4 +1,4 @@
-"""Build a train-only caption KB with FACTUAL graphs and SimpleNLG phrases."""
+"""Build train-only caption metadata with FACTUAL graphs and SimpleNLG phrases."""
 import json
 from pathlib import Path
 import sys
@@ -7,27 +7,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import faiss
 from huggingface_hub import model_info
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import torch
 from accelerate import PartialState
 from tqdm.auto import tqdm
 from src.shared.config import (
-    RETRIEVAL_OPENCLIP_MODEL_ID,
-    I2T_KB_FAISS_INDEX_PATH,
     I2T_KB_MANIFEST_PATH,
     I2T_KB_METADATA_PATH,
     SCENE_GRAPH_BATCH_SIZE,
     TRAIN_DF_PATH,
 )
 from src.shared.knowledge_graph import CheckedParser, GraphLinearizer
-from src.shared.openclip_encoder import load_openclip_retrieval_components
 
-# CLIP caption embedding batch size.
-KB_EMBEDDING_BATCH_SIZE = 32
 SCENE_GRAPH_MODEL = 'lizhuang144/flan-t5-base-VG-factual-sg-id'
 
 # Fixed extraction protocol, independent of the caption decoder's beam settings.
@@ -120,38 +113,16 @@ def build_metadata(train_df_path, metadata_path, revision, device,
     return pending
 
 
-def merge_shards(num_shards, metadata_path):
-    """Concatenate per-shard Parquet files written by each rank and remove the shards."""
+def merge_shards(num_shards, metadata_path, output_path):
+    """Concatenate rank shards into output_path, then remove the shards."""
     shard_paths = [
         metadata_path.with_suffix(f'.shard{i}.tmp.parquet') for i in range(num_shards)
     ]
     tables = [pq.read_table(p) for p in shard_paths]
     merged = pa.concat_tables(tables)
-    pending = metadata_path.with_suffix('.tmp.parquet')
-    pq.write_table(merged, pending)
+    pq.write_table(merged, output_path)
     for p in shard_paths:
         p.unlink(missing_ok=True)
-    return pending
-
-
-def build_caption_index(metadata_path, index_path, device):
-    """Index full captions; semantic units are stored for subsequent experiments."""
-    model, _, tokenizer = load_openclip_retrieval_components(RETRIEVAL_OPENCLIP_MODEL_ID, device=device)
-    index = faiss.IndexFlatIP(model.visual.output_dim)
-    with pq.ParquetFile(metadata_path) as parquet:
-        for batch in tqdm(parquet.iter_batches(batch_size=KB_EMBEDDING_BATCH_SIZE,
-                                             columns=['caption']), desc='Encoding captions',
-                          leave=False):
-            tokens = tokenizer(batch.column(0).to_pylist()).to(device)
-            with torch.inference_mode():
-                features = model.encode_text(tokens).float()
-                features = torch.nn.functional.normalize(features, dim=-1)
-            index.add(features.cpu().numpy())
-        if index.ntotal != parquet.metadata.num_rows:
-            raise ValueError('Index and metadata row counts differ.')
-    pending = index_path.with_suffix('.tmp.faiss')
-    faiss.write_index(index, str(pending))
-    return pending
 
 
 def main():
@@ -176,14 +147,12 @@ def main():
     state.wait_for_everyone()
 
     if state.is_main_process:
+        pending_meta = I2T_KB_METADATA_PATH.with_suffix('.tmp.parquet')
         if state.num_processes > 1:
-            pending_meta = merge_shards(state.num_processes, I2T_KB_METADATA_PATH)
-        else:
-            pending_meta = I2T_KB_METADATA_PATH.with_suffix('.tmp.parquet')
-        index_pending = build_caption_index(pending_meta, I2T_KB_FAISS_INDEX_PATH, device)
+            merge_shards(state.num_processes, I2T_KB_METADATA_PATH, pending_meta)
+
         pending_meta.replace(I2T_KB_METADATA_PATH)
-        index_pending.replace(I2T_KB_FAISS_INDEX_PATH)
-        print(f'Saved KB: {I2T_KB_METADATA_PATH}\nCaption index: {I2T_KB_FAISS_INDEX_PATH}')
+        print(f'Saved metadata: {I2T_KB_METADATA_PATH}')
 
 
 if __name__ == '__main__':

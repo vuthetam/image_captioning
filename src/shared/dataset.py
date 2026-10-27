@@ -1,9 +1,42 @@
+import math
+
+import pandas as pd
+import pyarrow.parquet as pq
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
 from pathlib import Path
 import h5py
 import numpy as np
+
+
+def load_rag_caption_lookup(path: str | Path, caption_sort_by: str = "itm"):
+    """Load imgid-to-caption-token mappings in ITM or stored CLIP order."""
+    if caption_sort_by not in {"clip", "itm"}:
+        raise ValueError("caption_sort_by must be 'clip' or 'itm'.")
+    columns = ["imgid", "tokens"]
+    if caption_sort_by == "itm":
+        if "itm_scores" not in pq.read_schema(path).names:
+            raise ValueError(f"ITM caption sorting requires an itm_scores column: {path}")
+        columns.append("itm_scores")
+    rag_df = pd.read_parquet(path, columns=columns)
+    if rag_df["imgid"].duplicated().any():
+        raise ValueError(f"RAG contexts contain duplicate imgid values: {path}")
+    if caption_sort_by == "clip":
+        return dict(zip(rag_df["imgid"], rag_df["tokens"]))
+
+    lookup = {}
+    for imgid, tokens, scores in rag_df.itertuples(index=False, name=None):
+        try:
+            scores = [float(score) for score in scores]
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Invalid ITM scores for imgid={imgid}: {path}") from error
+        if len(scores) != len(tokens) or not all(math.isfinite(score) for score in scores):
+            raise ValueError(f"ITM scores must be finite and aligned with tokens for imgid={imgid}: {path}")
+        order = sorted(range(len(scores)), key=scores.__getitem__, reverse=True)
+        lookup[imgid] = [tokens[index] for index in order]
+    return lookup
+
 
 class RawImageDataset(Dataset):
     """

@@ -20,7 +20,7 @@ class RetrievalEncoderTests(unittest.TestCase):
         import open_clip
         from open_clip.transform import image_transform
 
-        from script.shared import build_i2t_kb as builder
+        from script.shared import build_kb_i2t_index as builder
         from script.shared import extract_image_embeddings as extractor
         from src.shared import encoder as encoders
 
@@ -66,6 +66,7 @@ class RetrievalEncoderTests(unittest.TestCase):
                     patch.object(extractor, "IMAGES_DIR", root),
                     patch.object(extractor, "NUM_WORKERS", 0),
                     patch.object(builder, "RETRIEVAL_OPENCLIP_MODEL_ID", model_id),
+                    patch.object(builder, "KB_I2T_INDEX_BATCH_SIZE", 2),
                 ):
                     encoder = encoders.CLIPImageEmbeddingEncoder(device="cpu")
                     self.assertEqual(encoder.output_dim, output_dim)

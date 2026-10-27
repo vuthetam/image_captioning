@@ -21,7 +21,7 @@ except ImportError:
 
 if KB_DEPS:
     from src.shared.knowledge_graph import CheckedParser, GraphLinearizer
-    from script.shared.build_i2t_kb import build_metadata, metadata_schema, resolve_model_revision
+    from script.shared.build_kb_i2t_metadata import build_metadata, metadata_schema, resolve_model_revision
 
 
 def entity(head, quantity='', attributes=()):
@@ -268,32 +268,32 @@ class KnowledgeGraphTests(unittest.TestCase):
             parser = SimpleNamespace(parse=lambda captions, **kw: [graph() for _ in captions])
             output = folder / 'kb.parquet'
             manifest = folder / 'kb_manifest.json'
-            with patch('script.shared.build_i2t_kb.model_info', return_value=SimpleNamespace(sha='fixed')) as lookup:
+            with patch('script.shared.build_kb_i2t_metadata.model_info', return_value=SimpleNamespace(sha='fixed')) as lookup:
                 self.assertEqual(resolve_model_revision(manifest), 'fixed')
                 lookup.assert_called_once()
             saved = json.loads(manifest.read_text(encoding='utf-8'))
             self.assertEqual(set(saved), {'model', 'revision'})
             saved['train_sha256'] = 'unused'
             manifest.write_text(json.dumps(saved), encoding='utf-8')
-            with patch('script.shared.build_i2t_kb.CheckedParser', return_value=parser) as parser_class:
+            with patch('script.shared.build_kb_i2t_metadata.CheckedParser', return_value=parser) as parser_class:
                 pending = build_metadata(train, output, 'fixed', 'cpu', batch_size=1)
                 self.assertEqual(parser_class.call_count, 1)
             data = pq.read_table(pending).to_pylist()
             self.assertEqual(data[0]['tokens'], ['first'])
             self.assertEqual(data[0]['triplets'][0]['subject'], 'man')
             self.assertFalse(output.with_suffix('.parts').exists())
-            with patch('script.shared.build_i2t_kb.model_info') as lookup:
+            with patch('script.shared.build_kb_i2t_metadata.model_info') as lookup:
                 self.assertEqual(resolve_model_revision(manifest), 'fixed')
                 lookup.assert_not_called()
             self.assertEqual(set(json.loads(manifest.read_text(encoding='utf-8'))), {'model', 'revision'})
             # Every build processes all captions again, without cached partitions.
-            with patch('script.shared.build_i2t_kb.CheckedParser', return_value=parser) as parser_class:
+            with patch('script.shared.build_kb_i2t_metadata.CheckedParser', return_value=parser) as parser_class:
                 pending = build_metadata(train, output, 'fixed', 'cpu', batch_size=1)
                 self.assertEqual(parser_class.call_count, 1)
             pending.replace(output)
             previous = output.read_bytes()
             failing = SimpleNamespace(parse=Mock(side_effect=[[graph()], ValueError('parse failed')]))
-            with patch('script.shared.build_i2t_kb.CheckedParser', return_value=failing):
+            with patch('script.shared.build_kb_i2t_metadata.CheckedParser', return_value=failing):
                 with self.assertRaisesRegex(ValueError, 'parse failed'):
                     build_metadata(train, output, 'fixed', 'cpu', batch_size=1)
             self.assertFalse(pending.exists())

@@ -72,24 +72,27 @@ I2I, cũng tạo lại image FAISS index. Cả ảnh và text phải dùng cùng
 Giảm `RETRIEVAL_IMAGE_BATCH_SIZE` trong `.env` nếu thiếu VRAM khi dùng H/14
 (mặc định 64; có thể bắt đầu với 16).
 
-```bash
-python script/shared/build_i2t_kb.py
-```
-
 Chuẩn bị thêm các dependency cho bước xây KB:
 
 ```bash
 pip install -r requirements-kb.txt
 ```
 
-Script chỉ dùng caption của tập **train**. FACTUAL Base bản `-id`
-(`lizhuang144/flan-t5-base-VG-factual-sg-id`, hằng số trong `build_kb.py`)
+Hai bước chạy độc lập, theo thứ tự:
+
+```bash
+python script/shared/build_kb_i2t_metadata.py
+python script/shared/build_kb_i2t_index.py
+```
+
+`build_kb_i2t_metadata.py` chỉ dùng caption của tập **train**. FACTUAL Base bản `-id`
+(`lizhuang144/flan-t5-base-VG-factual-sg-id`, hằng số trong `build_kb_i2t_metadata.py`)
 chạy inference với `return_text=False`, giữ định danh entity và marker `v:`/`pv:`.
 pySimpleNLG chạy thuần Python, không cần Java, chỉ hiện thực dạng phân từ của
 động từ; danh từ được ghép trực tiếp để giữ nguyên dạng FACTUAL trả về.
-FACTUAL được giải phóng khỏi GPU trước khi tải CLIP.
+FACTUAL và OpenCLIP được tải trong hai lần chạy riêng biệt.
 
-Metadata giữ `caption_id` (vị trí dòng trong train split), `imgid`, `filepath`,
+Metadata giữ `imgid`, `filepath`,
 `filename`, `caption` và `tokens` gốc, rồi bổ sung:
 
 - `objects`: danh sách tên object, không có hậu tố ID.
@@ -107,33 +110,54 @@ giúp chọn thuộc tính tính từ đứng trước danh từ; trạng thái 
 Đây là linearization theo luật/lexicon, không đảm bảo ngữ pháp hay parsing chính
 xác tuyệt đối. Cần kiểm tra mẫu thật trước khi dùng các cụm cho thí nghiệm truy hồi.
 
-Cấu hình trong `src/shared/config.py`: đường dẫn train/KB
-và `RETRIEVAL_OPENCLIP_MODEL_ID`. Batch size được đặt cố định trong `build_kb.py`:
-FACTUAL dùng 32, CLIP dùng 64.
-Script tự chọn CUDA nếu có, xử lý toàn bộ train split và ghi vào đường dẫn KB.
-Giao thức trích xuất cố định trong `PARSING_OPTIONS` ở `build_kb.py`:
-5 beams, giới hạn input/output 128/256 token. Các giá trị này độc lập với
+Cấu hình trong `src/shared/config.py`: đường dẫn train/KB,
+`RETRIEVAL_OPENCLIP_MODEL_ID` và `SCENE_GRAPH_BATCH_SIZE` cho FACTUAL.
+OpenCLIP dùng `KB_I2T_INDEX_BATCH_SIZE` trong config (mặc định `32` caption/batch/GPU),
+đọc từ `I2T_INDEX_BATCH_SIZE` trong `.env` (ví dụ `I2T_INDEX_BATCH_SIZE=64`).
+Hai script tự chọn CUDA nếu có và hỗ trợ chia dữ liệu bằng Accelerate.
+Để tạo index trên hai GPU:
+
+```bash
+accelerate launch --multi_gpu --num_processes 2 script/shared/build_kb_i2t_index.py
+```
+
+Mỗi process encode một đoạn dòng liên tiếp của metadata trên GPU riêng và ghi
+FAISS shard tạm. Process chính ghép các shard theo thứ tự rank, kiểm tra số vector
+của từng shard và tổng số vector, rồi đổi tên index sang tên cuối. Metadata giữ nguyên.
+Máy chạy cần dùng chung đường dẫn metadata/output cho mọi process.
+Giao thức trích xuất cố định trong `PARSING_OPTIONS` ở `build_kb_i2t_metadata.py`:
+2 beams, giới hạn input/output 128/256 token. Các giá trị này độc lập với
 tham số sinh caption của mô hình chính.
 
 Đầu vào quá dài, đầu ra chạm giới hạn, hoặc graph sai định dạng sẽ dừng để kiểm tra,
 không âm thầm cắt hoặc bỏ đơn vị. Graph chỉ có entity riêng lẻ vẫn được giữ.
 
-Metadata được ghi lần lượt theo batch vào một file Parquet tạm, không lưu file
-chunk hay tiếp tục từ batch đã xử lý. Nếu bị ngắt, lần chạy sau xử lý lại từ đầu.
+Metadata được ghi theo batch vào Parquet tạm (mỗi rank một shard khi dùng nhiều GPU),
+sau đó ghép các shard và đổi tên thành `kb_i2t_metadata.parquet` khi hoàn tất bước metadata.
+Nếu bị ngắt trong lúc tạo metadata, lần chạy metadata sau xử lý lại từ đầu.
 `kb_i2t_manifest.json` nằm cùng thư mục với metadata, giữ model commit đã chọn
 để các lần chạy dùng cùng phiên bản. File chỉ lưu hai trường `model` và `revision`.
 Trên Kaggle cần Internet khi tải checkpoint/package lần đầu.
 
-Sau khi xây metadata, script tạo text embedding **của caption gốc** bằng
-`RETRIEVAL_OPENCLIP_MODEL_ID`, chuẩn hóa vector và lưu:
+`build_kb_i2t_index.py` đọc `kb_i2t_metadata.parquet`, tạo text embedding **của caption gốc**
+bằng `RETRIEVAL_OPENCLIP_MODEL_ID`, chuẩn hóa vector và thêm vào FAISS theo đúng thứ tự
+dòng metadata. Script chỉ ghi index và không sửa metadata. Hai bước tạo các file:
 
 - `artifacts/<retrieval-model-id>/kb/kb_i2t_index.faiss`
 - `artifacts/<retrieval-model-id>/kb/kb_i2t_metadata.parquet`
 
 Index vẫn theo caption để tương thích với text RAG hiện tại. Các cụm được lưu
 để kiểm tra và phục vụ bước xây index theo đơn vị sau này; model train vẫn đọc
-tokens caption. File đích chỉ được thay khi hoàn thành cả metadata và index.
-Không chạy nhiều builder cùng một thư mục output đồng thời.
+tokens caption. Mỗi bước chỉ thay file đích của mình sau khi hoàn tất. Nếu bị ngắt
+khi tạo index, chạy lại `build_kb_i2t_index.py`; không cần chạy lại FACTUAL.
+
+Với `kb_i2t_metadata.tmp.parquet` đã hoàn tất từ script cũ (đã chuyển sang
+`Encoding captions`), đổi tên file thành `kb_i2t_metadata.parquet` và đặt vào
+`I2T_KB_METADATA_PATH`, rồi chỉ chạy `build_kb_i2t_index.py`. Giữ nguyên nội dung và thứ tự
+dòng. Mỗi process có thanh `Encoding captions` riêng, hiển thị số caption,
+tốc độ caption/giây và thời gian còn lại cho phần dữ liệu của process đó.
+Khi thay metadata, phải tạo lại index khớp với metadata đó trước khi retrieval.
+Không chạy builder hoặc retrieval trong cùng thư mục output đồng thời với bước đang ghi file.
 
 Kiểm tra offline (không tải trọng số FACTUAL) bằng:
 
@@ -261,6 +285,21 @@ Context chèn `<eos>` giữa các caption; đây là giới hạn tổng chiều
 mỗi caption phải đủ 22 token. Vẫn có thể đặt
 trực tiếp `MAX_CTX_LENGTH` trong `.env` nếu muốn dùng một giới hạn cố định.
 Caption mục tiêu và câu sinh vẫn dùng `MAX_LENGTH=40`, độc lập với chiều dài context.
+
+`TEXT_RAG_CAPTION_SORT_BY=itm` là mặc định: text RAG chọn caption theo ITM score.
+Để lấy `TOP_K_CAPTIONS` caption theo thứ tự CLIP đã lưu như cách cũ, đặt trong `.env`:
+
+```dotenv
+TEXT_RAG_CAPTION_SORT_BY=clip
+```
+
+Với `itm`, text RAG sắp xếp toàn bộ nhóm caption đã truy hồi theo `itm_scores` giảm dần,
+rồi lấy `TOP_K_CAPTIONS` trước khi ghép và cắt context. Khi điểm bằng nhau,
+giữ thứ tự CLIP. Tùy chọn áp dụng cho cả train, validation và generate của text RAG;
+multimodal RAG vẫn dùng thứ tự CLIP. File `*_i2t.parquet` phải có `itm_scores`
+hợp lệ và cùng số phần tử với `tokens`; thiếu hoặc lệch điểm sẽ báo lỗi.
+Không cần chạy lại truy hồi nếu các file đã có cột này. Dùng cùng lựa chọn khi train
+và generate, và đặt `RUN_MODE` riêng khi so sánh hai cách chọn caption.
 
 ## 6. Train và generate multimodal RAG kết hợp ảnh và caption
 

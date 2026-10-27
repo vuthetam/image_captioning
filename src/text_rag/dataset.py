@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from src.shared.dataset import H5FeatureStore
+from src.shared.dataset import H5FeatureStore, load_rag_caption_lookup
 from src.shared.vocabulary import Vocabulary
 
 
@@ -35,13 +35,6 @@ def encode_rag_context(
     )
 
 
-def _load_rag_lookup(path: str | Path):
-    rag_df = pd.read_parquet(path, columns=["imgid", "tokens"])
-    if rag_df["imgid"].duplicated().any():
-        raise ValueError(f"RAG contexts contain duplicate imgid values: {path}")
-    return dict(zip(rag_df["imgid"], rag_df["tokens"]))
-
-
 class RAGFeatureCaptionDataset(Dataset):
     """Training dataset for V1-style text RAG using precomputed visual tokens."""
 
@@ -54,6 +47,7 @@ class RAGFeatureCaptionDataset(Dataset):
         max_length: int,
         max_context_length: int,
         top_k: int,
+        caption_sort_by: str = "itm",
     ) -> None:
         self.feature_store = H5FeatureStore(features_path)
         self.dataframe = df.reset_index(drop=True)
@@ -61,7 +55,7 @@ class RAGFeatureCaptionDataset(Dataset):
         self.max_length = max_length
         self.max_context_length = max_context_length
         self.top_k = top_k
-        self.rag_lookup = _load_rag_lookup(rag_contexts_path)
+        self.rag_lookup = load_rag_caption_lookup(rag_contexts_path, caption_sort_by)
 
     @property
     def feature_shape(self) -> tuple[int, ...]:
@@ -103,13 +97,14 @@ class RAGFeatureDataset(Dataset):
         rag_contexts_path: str | Path,
         max_context_length: int,
         top_k: int,
+        caption_sort_by: str = "itm",
     ) -> None:
         self.feature_store = H5FeatureStore(features_path)
         self.dataframe = dataframe.reset_index(drop=True)
         self.vocab = vocab
         self.max_context_length = max_context_length
         self.top_k = top_k
-        self.rag_lookup = _load_rag_lookup(rag_contexts_path)
+        self.rag_lookup = load_rag_caption_lookup(rag_contexts_path, caption_sort_by)
 
     @property
     def feature_shape(self) -> tuple[int, ...]:

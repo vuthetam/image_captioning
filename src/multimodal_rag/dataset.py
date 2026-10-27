@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from src.shared.dataset import H5FeatureStore
+from src.shared.dataset import H5FeatureStore, load_rag_caption_lookup
 from src.shared.vocabulary import Vocabulary
 
 
@@ -66,11 +66,10 @@ class RAGFeatureDataset(Dataset):
         if self.feature_store is not None and self.feature_store.feature_shape[-1] != self.related_store.feature_shape[-1]:
             raise ValueError("Original and related visual features must have the same dimension.")
 
-        rag_df = pd.read_parquet(rag_contexts_path, columns=["imgid", "tokens"])
+        self.rag_lookup = load_rag_caption_lookup(rag_contexts_path, caption_sort_by="clip")
         related_df = pd.read_parquet(related_images_path, columns=["imgid", "retrieved_imgids"])
-        if rag_df["imgid"].duplicated().any() or related_df["imgid"].duplicated().any():
+        if related_df["imgid"].duplicated().any():
             raise ValueError("Retrieval files must contain one row per query imgid.")
-        self.rag_lookup = dict(zip(rag_df["imgid"], rag_df["tokens"]))
         self.related_lookup = dict(zip(related_df["imgid"], related_df["retrieved_imgids"]))
 
     @property
