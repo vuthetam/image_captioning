@@ -101,13 +101,13 @@ TEST_IMAGE_EMBEDDINGS_PATH = IMAGE_EMBEDDINGS_DIR / "test_image_embeddings.h5"
 # Number of captions retrieved and scored with BLIP ITM per query image.
 I2T_RETRIEVAL_TOP_K = int(os.getenv("I2T_RETRIEVAL_TOP_K", "10"))
 # Number of query images scored together with BLIP ITM per GPU.
-BLIP_ITM_IMAGE_BATCH_SIZE = int(os.getenv("BLIP_ITM_IMAGE_BATCH_SIZE", "1"))
+BLIP_ITM_IMAGE_BATCH_SIZE = int(os.getenv("BLIP_ITM_IMAGE_BATCH_SIZE", "2"))
 
 # FACTUAL inference batch size per GPU.
 SCENE_GRAPH_BATCH_SIZE = int(os.getenv("SCENE_GRAPH_BATCH_SIZE", "64"))
 
 # Number of captions encoded per batch when building the I2T FAISS index.
-KB_I2T_INDEX_BATCH_SIZE = int(os.getenv("I2T_INDEX_BATCH_SIZE", "32"))
+KB_I2T_INDEX_BATCH_SIZE = int(os.getenv("KB_I2T_INDEX_BATCH_SIZE", "64"))
 
 KB_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)

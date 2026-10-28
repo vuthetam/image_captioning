@@ -181,7 +181,20 @@ Chạy `python script/shared/extract_image_embeddings.py` trước để tạo i
 cho train/val/test bằng `RETRIEVAL_OPENCLIP_MODEL_ID`. Script truy hồi đọc các embedding
 đã lưu từ HDF5, chuẩn hóa L2 và tìm caption tương tự trong text FAISS index trên CPU.
 Sau khi loại caption thuộc chính ảnh truy vấn, script giữ tối đa `I2T_RETRIEVAL_TOP_K=10`
-caption theo điểm CLIP và dùng BLIP ITM chấm từng cặp ảnh–caption. Kết quả lưu vào:
+caption theo điểm CLIP. Cùng một script chạy hai giai đoạn nối tiếp:
+
+1. Chỉ main process chạy FAISS cho toàn bộ train/val/test, ghi các file
+   `train_i2t.clip.parquet`, `val_i2t.clip.parquet`, `test_i2t.clip.parquet`.
+   Các file này giữ caption, semantic units và `clip_scores`, chưa có `itm_scores`.
+2. Sau khi cả ba split truy hồi xong, main giải phóng FAISS index và metadata của kho.
+   Mỗi process mới tải BLIP lên GPU riêng, nạp đoạn query được chia cho mình vào RAM,
+   bổ sung `itm_scores` theo batch GPU. Khi chấm xong cả đoạn mới ghi shard một lần,
+   rồi main process ghép các shard theo đúng thứ tự query ban đầu.
+
+Không có bước tìm FAISS xen giữa các batch ITM. Các file `.clip.parquet` được giữ lại
+để kiểm tra kết quả trung gian; mỗi lần chạy script vẫn thực hiện cả hai giai đoạn.
+Thanh tiến trình hiển thị riêng FAISS và ITM; ITM đếm số ảnh trong phần dữ liệu của rank 0.
+Kết quả hoàn chỉnh lưu vào:
 
 - `artifacts/<retrieval-model-id>/rag_contexts/train_i2t.parquet`
 - `artifacts/<retrieval-model-id>/rag_contexts/val_i2t.parquet`

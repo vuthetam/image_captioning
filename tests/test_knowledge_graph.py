@@ -146,7 +146,7 @@ class KnowledgeGraphTests(unittest.TestCase):
         import faiss
         import h5py
         import numpy as np
-        from script.shared.retrieve_i2t_kb import process_and_retrieve
+        from script.shared.retrieve_i2t_kb import retrieve_captions, score_retrieved_captions
         rows = []
         for imgid in [7, 8]:
             rows.append(dict(imgid=imgid, caption='caption',
@@ -168,10 +168,12 @@ class KnowledgeGraphTests(unittest.TestCase):
             with h5py.File(source, 'w') as handle:
                 handle['imgids'] = [7]
                 handle['features'] = np.array([[1., 0.]], dtype='float32')
-            process_and_retrieve(
-                source, target, index, kb_metadata, image_paths, scorer, state,
+            candidates = target.with_suffix('.clip.parquet')
+            retrieve_captions(
+                source, candidates, index, kb_metadata,
                 pa.Table.from_pandas(kb_metadata, preserve_index=False).schema,
             )
+            score_retrieved_captions(candidates, target, image_paths, scorer, state)
             table = pq.read_table(target)
             result = table.to_pylist()[0]
             self.assertEqual(result['retrieval_imgids'], [8])
@@ -184,10 +186,11 @@ class KnowledgeGraphTests(unittest.TestCase):
             # Existing KBs remain readable without the newly added columns.
             legacy = kb_metadata[['imgid', 'caption', 'tokens', 'objects']].copy()
             legacy['relations'] = [['ride'], ['ride']]
-            process_and_retrieve(
-                source, target, index, legacy, image_paths, scorer, state,
+            retrieve_captions(
+                source, candidates, index, legacy,
                 pa.Table.from_pandas(legacy, preserve_index=False).schema,
             )
+            score_retrieved_captions(candidates, target, image_paths, scorer, state)
             result = pq.read_table(target).to_pylist()[0]
             self.assertEqual(result['retrieval_imgids'], [8])
             self.assertNotIn('triplet_texts', result)
