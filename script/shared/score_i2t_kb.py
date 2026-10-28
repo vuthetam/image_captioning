@@ -129,9 +129,11 @@ def score_retrieved_captions(input_parquet_path, output_parquet_path, image_path
     try:
         print(f"[rank {state.process_index}] {output_parquet_path.name}: "
               f"scoring {len(results):,} images", flush=True)
+        # Print separate lines so notebook output does not hide another rank's bar.
         with tqdm(total=len(results),
                   desc=f"{output_parquet_path.stem} ITM [rank {state.process_index}]",
-                  unit="image", position=state.process_index, leave=True) as progress:
+                  unit="image", file=sys.stdout,
+                  bar_format="{l_bar}{bar}{r_bar}\n") as progress:
             for start in range(0, len(results), itm_image_batch_size):
                 image_batch = results[start:start + itm_image_batch_size]
                 for result in image_batch:
