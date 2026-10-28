@@ -146,7 +146,8 @@ class KnowledgeGraphTests(unittest.TestCase):
         import faiss
         import h5py
         import numpy as np
-        from script.shared.retrieve_i2t_kb import retrieve_captions, score_retrieved_captions
+        from script.shared.retrieve_i2t_kb import retrieve_captions
+        from script.shared.score_i2t_kb import score_retrieved_captions
         rows = []
         for imgid in [7, 8]:
             rows.append(dict(imgid=imgid, caption='caption',

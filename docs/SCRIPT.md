@@ -167,32 +167,42 @@ python -m unittest discover -s tests -v
 
 ## 4. Retrieve context RAG
 
+Chạy FAISS trên CPU một lần để lưu ứng viên cho cả train/val/test:
+
 ```bash
 python script/shared/retrieve_i2t_kb.py
+```
+
+Sau đó chấm BLIP ITM. Với một GPU:
+
+```bash
+python script/shared/score_i2t_kb.py
 ```
 
 Trên Kaggle T4 ×2, chia các ảnh cho hai process bằng Accelerate:
 
 ```bash
-accelerate launch --multi_gpu --num_processes 2 script/shared/retrieve_i2t_kb.py
+accelerate launch --multi_gpu --num_processes 2 script/shared/score_i2t_kb.py
 ```
 
 Chạy `python script/shared/extract_image_embeddings.py` trước để tạo image embeddings
 cho train/val/test bằng `RETRIEVAL_OPENCLIP_MODEL_ID`. Script truy hồi đọc các embedding
 đã lưu từ HDF5, chuẩn hóa L2 và tìm caption tương tự trong text FAISS index trên CPU.
 Sau khi loại caption thuộc chính ảnh truy vấn, script giữ tối đa `I2T_RETRIEVAL_TOP_K=10`
-caption theo điểm CLIP. Cùng một script chạy hai giai đoạn nối tiếp:
+caption theo điểm CLIP. Hai script chạy độc lập:
 
-1. Chỉ main process chạy FAISS cho toàn bộ train/val/test, ghi các file
+1. `retrieve_i2t_kb.py` chạy FAISS trong một process CPU cho toàn bộ train/val/test, ghi các file
    `train_i2t.clip.parquet`, `val_i2t.clip.parquet`, `test_i2t.clip.parquet`.
    Các file này giữ caption, semantic units và `clip_scores`, chưa có `itm_scores`.
-2. Sau khi cả ba split truy hồi xong, main giải phóng FAISS index và metadata của kho.
-   Mỗi process mới tải BLIP lên GPU riêng, nạp đoạn query được chia cho mình vào RAM,
+2. `score_i2t_kb.py` đọc các file ứng viên đã lưu. Mỗi process tải BLIP lên GPU riêng,
+   nạp đoạn query được chia cho mình vào RAM,
    bổ sung `itm_scores` theo batch GPU. Khi chấm xong cả đoạn mới ghi shard một lần,
    rồi main process ghép các shard theo đúng thứ tự query ban đầu.
 
-Không có bước tìm FAISS xen giữa các batch ITM. Các file `.clip.parquet` được giữ lại
-để kiểm tra kết quả trung gian; mỗi lần chạy script vẫn thực hiện cả hai giai đoạn.
+Các file `.clip.parquet` được giữ lại để chạy lại ITM. Khi đổi `BLIP_ITM_IMAGE_BATCH_SIZE`
+hoặc `BLIP_ITM_MODEL_ID`, chỉ chạy lại `score_i2t_kb.py`; script này không đọc FAISS index,
+metadata của kho hoặc image embeddings HDF5. Khi thay kho, retrieval model hoặc top K,
+chạy lại retrieval rồi chấm ITM. File `.clip.parquet` đã tạo xong bằng script cũ vẫn dùng được.
 Thanh tiến trình hiển thị riêng FAISS và ITM; ITM đếm số ảnh trong phần dữ liệu của rank 0.
 Kết quả hoàn chỉnh lưu vào:
 

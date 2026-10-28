@@ -14,6 +14,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from script.shared import retrieve_i2t_kb as retrieval
+from script.shared import score_i2t_kb as scoring
 
 
 class Scorer:
@@ -80,7 +81,7 @@ class RetrievalStagesTests(unittest.TestCase):
                 target = self.root / f'result-{processes}.parquet'
                 # Main runs last here so that all simulated worker shards exist before merge.
                 for rank in reversed(range(processes)):
-                    retrieval.score_retrieved_captions(
+                    scoring.score_retrieved_captions(
                         self.candidates, target, self.paths, Scorer(), state_for(rank, processes),
                         itm_image_batch_size=2,
                     )
@@ -109,7 +110,7 @@ class RetrievalStagesTests(unittest.TestCase):
             return original_score(image_path, captions)
 
         with patch.object(scorer, 'score', side_effect=score):
-            retrieval.score_retrieved_captions(
+            scoring.score_retrieved_captions(
                 self.candidates, target, self.paths, scorer, state_for(1, 2),
                 itm_image_batch_size=1,
             )
@@ -126,7 +127,7 @@ class RetrievalStagesTests(unittest.TestCase):
         scorer = Scorer()
         with patch.object(scorer, 'score_batch', return_value=[[], []]):
             with self.assertRaisesRegex(ValueError, 'ITM score count'):
-                retrieval.score_retrieved_captions(
+                scoring.score_retrieved_captions(
                     self.candidates, target, self.paths, scorer, state_for(0, 1),
                     itm_image_batch_size=2,
                 )
@@ -134,7 +135,7 @@ class RetrievalStagesTests(unittest.TestCase):
         self.assertEqual(self.candidates.read_bytes(), original_candidates)
         self.assertFalse(target.with_suffix('.rank0.tmp.parquet').exists())
 
-    def test_main_finishes_all_faiss_splits_before_loading_blip(self):
+    def test_scoring_can_rerun_without_faiss_inputs_and_preserves_candidates(self):
         index_path = self.root / 'kb.faiss'
         faiss.write_index(self.index, str(index_path))
         metadata_path = self.root / 'kb.parquet'
@@ -144,27 +145,41 @@ class RetrievalStagesTests(unittest.TestCase):
                       for i in self.query_ids]).to_parquet(split_path, index=False)
         targets = {split: self.root / f'{split}_i2t.parquet' for split in ('TRAIN', 'VAL', 'TEST')}
 
-        def load_scorer(*args):
-            for target in targets.values():
-                self.assertTrue(target.with_suffix('.clip.parquet').is_file())
-                self.assertFalse(target.exists())
-            return Scorer()
-
         replacements = dict(I2T_KB_FAISS_INDEX_PATH=index_path, I2T_KB_METADATA_PATH=metadata_path,
-                            IMAGES_DIR=self.root, I2T_RETRIEVAL_TOP_K=2, BLIP_ITM_IMAGE_BATCH_SIZE=2)
+                            I2T_RETRIEVAL_TOP_K=2)
+        score_replacements = dict(IMAGES_DIR=self.root)
         for split, target in targets.items():
             replacements[f'{split}_IMAGE_EMBEDDINGS_PATH'] = self.source
-            replacements[f'{split}_DF_PATH'] = split_path
             replacements[f'{split}_I2T_PATH'] = target
-        with (
-            patch.multiple(retrieval, **replacements),
-            patch.object(retrieval, 'PartialState', return_value=state_for(0, 1)),
-            patch.object(retrieval, 'BlipITMScorer', side_effect=load_scorer) as loader,
-        ):
+            score_replacements[f'{split}_DF_PATH'] = split_path
+            score_replacements[f'{split}_I2T_PATH'] = target
+        with patch.multiple(retrieval, **replacements):
             retrieval.main()
-        loader.assert_called_once()
+
+        candidates = {target: target.with_suffix('.clip.parquet').read_bytes()
+                      for target in targets.values()}
         for target in targets.values():
-            self.assertEqual(pq.read_table(target)['imgid'].to_pylist(), self.query_ids)
+            self.assertFalse(target.exists())
+        # Scoring only needs candidates, split image paths and original images.
+        index_path.unlink()
+        metadata_path.unlink()
+        self.source.unlink()
+        with (
+            patch.multiple(scoring, **score_replacements),
+            patch.object(scoring, 'PartialState', return_value=state_for(0, 1)),
+            patch.object(scoring, 'BlipITMScorer', side_effect=lambda *args: Scorer()),
+        ):
+            previous = None
+            for batch_size in (1, 3):
+                with patch.object(scoring, 'BLIP_ITM_IMAGE_BATCH_SIZE', batch_size):
+                    scoring.main()
+                current = [pq.read_table(target).to_pylist() for target in targets.values()]
+                if previous is not None:
+                    self.assertEqual(current, previous)
+                previous = current
+                for target in targets.values():
+                    self.assertEqual(pq.read_table(target)['imgid'].to_pylist(), self.query_ids)
+                    self.assertEqual(target.with_suffix('.clip.parquet').read_bytes(), candidates[target])
 
 
 if __name__ == '__main__':
