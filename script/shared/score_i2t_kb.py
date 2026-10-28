@@ -120,13 +120,18 @@ def score_retrieved_captions(input_parquet_path, output_parquet_path, image_path
         schema = schema.with_metadata(metadata)
         split_start = num_rows * state.process_index // state.num_processes
         split_stop = num_rows * (state.process_index + 1) // state.num_processes
+        print(f"[rank {state.process_index}] {output_parquet_path.name}: "
+              f"loading rows [{split_start:,}, {split_stop:,})", flush=True)
         # Load only this rank's rows before scoring; GPU batches remain independent.
         results = [row for batch in iter_context_batches(parquet, split_start, split_stop, 256)
                    for row in batch.to_pylist()]
 
     try:
-        with tqdm(total=len(results), desc="BLIP ITM [rank 0]",
-                  unit="image", leave=False, disable=not state.is_main_process) as progress:
+        print(f"[rank {state.process_index}] {output_parquet_path.name}: "
+              f"scoring {len(results):,} images", flush=True)
+        with tqdm(total=len(results),
+                  desc=f"{output_parquet_path.stem} ITM [rank {state.process_index}]",
+                  unit="image", position=state.process_index, leave=True) as progress:
             for start in range(0, len(results), itm_image_batch_size):
                 image_batch = results[start:start + itm_image_batch_size]
                 for result in image_batch:
@@ -149,21 +154,26 @@ def score_retrieved_captions(input_parquet_path, output_parquet_path, image_path
                         )
                     result["itm_scores"] = scores
                 progress.update(len(image_batch))
+        print(f"[rank {state.process_index}] {output_parquet_path.name}: "
+              "scoring complete; writing shard", flush=True)
         pq.write_table(pa.Table.from_pylist(results, schema=schema), shard_path)
     except BaseException:
         shard_path.unlink(missing_ok=True)
         raise
     del results
 
+    print(f"[rank {state.process_index}] shard saved: {shard_path.name}; "
+          "waiting for all ranks", flush=True)
     state.wait_for_everyone()
     if state.is_main_process:
+        print(f"All shards ready; merging {output_parquet_path.name}", flush=True)
         merge_result_shards(output_parquet_path, state.num_processes, num_rows, schema)
         print(f"Đã lưu {num_rows:,} ảnh đã chấm ITM tại {output_parquet_path}")
     state.wait_for_everyone()
 
 
 def main():
-    state = PartialState()
+    state = PartialState(timeout=timedelta(hours=24))
     splits = [
         (TRAIN_DF_PATH, TRAIN_I2T_PATH),
         (VAL_DF_PATH, VAL_I2T_PATH),

@@ -203,7 +203,8 @@ Các file `.clip.parquet` được giữ lại để chạy lại ITM. Khi đổ
 hoặc `BLIP_ITM_MODEL_ID`, chỉ chạy lại `score_i2t_kb.py`; script này không đọc FAISS index,
 metadata của kho hoặc image embeddings HDF5. Khi thay kho, retrieval model hoặc top K,
 chạy lại retrieval rồi chấm ITM. File `.clip.parquet` đã tạo xong bằng script cũ vẫn dùng được.
-Thanh tiến trình hiển thị riêng FAISS và ITM; ITM đếm số ảnh trong phần dữ liệu của rank 0.
+Thanh tiến trình hiển thị riêng FAISS và ITM; mỗi rank có thanh ITM riêng,
+đếm số ảnh trong phần dữ liệu của rank đó và cập nhật khoảng mỗi 5 giây.
 Kết quả hoàn chỉnh lưu vào:
 
 - `artifacts/<retrieval-model-id>/rag_contexts/train_i2t.parquet`
@@ -248,6 +249,9 @@ Batch cuối có thể ít ảnh hơn; ảnh không có caption nhận danh sác
 Nhóm chỉ có một ảnh gọi `score()`, dùng `expand()` chia sẻ đặc trưng ảnh cho
 các caption. Nhóm nhiều ảnh gọi `score_batch()`.
 Script dùng `PartialState()` và dtype mặc định của model, không bật autocast hay ép FP16.
+Thời gian chờ đồng bộ được đặt là 24 giờ để rank hoàn tất sớm không bị timeout NCCL
+10 phút trong khi rank khác còn chấm ITM hoặc ghi shard. Mỗi rank in log khi nạp dữ liệu,
+bắt đầu chấm, ghi shard và chờ đồng bộ; mỗi rank hiển thị thanh tiến trình riêng.
 
 Mỗi process load một BLIP trên `state.device`, encode nhóm ảnh có caption trong
 một lượt và giữ toàn bộ CLS/patch features trên GPU. Với nhóm nhiều ảnh, `repeat_interleave()` tạo
