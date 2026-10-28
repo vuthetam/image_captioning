@@ -205,6 +205,8 @@ metadata của kho hoặc image embeddings HDF5. Khi thay kho, retrieval model h
 chạy lại retrieval rồi chấm ITM. File `.clip.parquet` đã tạo xong bằng script cũ vẫn dùng được.
 Thanh tiến trình hiển thị riêng FAISS và ITM; mỗi rank có thanh ITM riêng,
 đếm số ảnh trong phần dữ liệu của rank đó và cập nhật khoảng mỗi 5 giây.
+Tiến trình được in thành từng dòng có nhãn rank, không dùng vị trí con trỏ terminal
+để tránh che mất tiến trình rank khác khi chạy qua notebook.
 Kết quả hoàn chỉnh lưu vào:
 
 - `artifacts/<retrieval-model-id>/rag_contexts/train_i2t.parquet`
