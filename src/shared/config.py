@@ -63,7 +63,7 @@ VAL_DF_PATH = SPLITS_DIR / "val_df.parquet"
 TEST_DF_PATH = SPLITS_DIR / "test_df.parquet"
 
 # Preserve the vocabulary used by existing checkpoints.
-VOCAB_PATH = ARTIFACTS_DIR / "vocab_v3.json"
+VOCAB_PATH = Path(os.getenv("VOCAB_PATH", str(ARTIFACTS_DIR / "vocab.json")))
 FREQ_THRESHOLD = int(os.getenv("FREQ_THRESHOLD", "5"))
 
 
