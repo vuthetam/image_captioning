@@ -32,6 +32,7 @@ from src.shared.config import (
     NUM_EPOCHS,
     NUM_WORKERS,
     RUN_MODE,
+    TEXT_RAG_CAPTION_SORT_BY,
     TOP_K_CAPTIONS,
     TOP_K_RAG_IMAGES,
     TRAIN_DF_PATH,
@@ -80,6 +81,7 @@ def main(no_input_image: bool = False) -> None:
         max_context_length=MAX_CTX_LENGTH,
         top_k_captions=TOP_K_CAPTIONS,
         top_k_images=TOP_K_RAG_IMAGES,
+        caption_sort_by=TEXT_RAG_CAPTION_SORT_BY,
     )
     val_dataset = RAGFeatureCaptionDataset(
         df=val_df,
@@ -92,6 +94,7 @@ def main(no_input_image: bool = False) -> None:
         max_context_length=MAX_CTX_LENGTH,
         top_k_captions=TOP_K_CAPTIONS,
         top_k_images=TOP_K_RAG_IMAGES,
+        caption_sort_by=TEXT_RAG_CAPTION_SORT_BY,
     )
     train_generator = create_seeded_generator(42)
     train_loader = DataLoader(

@@ -10,6 +10,21 @@ import h5py
 import numpy as np
 
 
+def rag_caption_order(caption_count: int, caption_sort_by: str, scores=None, context=""):
+    """Return a stable caption order shared by caption and fact contexts."""
+    if caption_sort_by not in {"clip", "itm"}:
+        raise ValueError("caption_sort_by must be 'clip' or 'itm'.")
+    if caption_sort_by == "clip":
+        return list(range(caption_count))
+    try:
+        scores = [float(score) for score in scores]
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Invalid ITM scores {context}") from error
+    if len(scores) != caption_count or not all(math.isfinite(score) for score in scores):
+        raise ValueError(f"ITM scores must be finite and aligned with captions {context}")
+    return sorted(range(caption_count), key=scores.__getitem__, reverse=True)
+
+
 def load_rag_caption_lookup(path: str | Path, caption_sort_by: str = "itm"):
     """Load imgid-to-caption-token mappings in ITM or stored CLIP order."""
     if caption_sort_by not in {"clip", "itm"}:
@@ -27,13 +42,7 @@ def load_rag_caption_lookup(path: str | Path, caption_sort_by: str = "itm"):
 
     lookup = {}
     for imgid, tokens, scores in rag_df.itertuples(index=False, name=None):
-        try:
-            scores = [float(score) for score in scores]
-        except (TypeError, ValueError) as error:
-            raise ValueError(f"Invalid ITM scores for imgid={imgid}: {path}") from error
-        if len(scores) != len(tokens) or not all(math.isfinite(score) for score in scores):
-            raise ValueError(f"ITM scores must be finite and aligned with tokens for imgid={imgid}: {path}")
-        order = sorted(range(len(scores)), key=scores.__getitem__, reverse=True)
+        order = rag_caption_order(len(tokens), caption_sort_by, scores, f"for imgid={imgid}: {path}")
         lookup[imgid] = [tokens[index] for index in order]
     return lookup
 

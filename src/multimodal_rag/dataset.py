@@ -49,6 +49,7 @@ class RAGFeatureDataset(Dataset):
         max_context_length: int,
         top_k_captions: int,
         top_k_images: int,
+        caption_sort_by: str = "clip",
     ) -> None:
         self.dataframe = df.reset_index(drop=True)
         self.vocab = vocab
@@ -66,7 +67,9 @@ class RAGFeatureDataset(Dataset):
         if self.feature_store is not None and self.feature_store.feature_shape[-1] != self.related_store.feature_shape[-1]:
             raise ValueError("Original and related visual features must have the same dimension.")
 
-        self.rag_lookup = load_rag_caption_lookup(rag_contexts_path, caption_sort_by="clip")
+        self.rag_lookup = load_rag_caption_lookup(
+            rag_contexts_path, caption_sort_by=caption_sort_by
+        )
         related_df = pd.read_parquet(related_images_path, columns=["imgid", "retrieved_imgids"])
         if related_df["imgid"].duplicated().any():
             raise ValueError("Retrieval files must contain one row per query imgid.")
@@ -109,6 +112,7 @@ class RAGFeatureCaptionDataset(RAGFeatureDataset):
         max_context_length: int,
         top_k_captions: int,
         top_k_images: int,
+        caption_sort_by: str = "clip",
     ) -> None:
         super().__init__(
             df=df,
@@ -120,6 +124,7 @@ class RAGFeatureCaptionDataset(RAGFeatureDataset):
             max_context_length=max_context_length,
             top_k_captions=top_k_captions,
             top_k_images=top_k_images,
+            caption_sort_by=caption_sort_by,
         )
         self.max_length = max_length
 

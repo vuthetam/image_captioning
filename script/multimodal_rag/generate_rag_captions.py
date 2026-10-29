@@ -32,6 +32,7 @@ from src.shared.config import (
     TEST_I2T_PATH,
     TEST_I2I_PATH,
     TEST_VISUAL_FEATURES_PATH,
+    TEXT_RAG_CAPTION_SORT_BY,
     RUN_MODE,
     TOP_K_CAPTIONS,
     TOP_K_RAG_IMAGES,
@@ -62,6 +63,7 @@ def main(no_input_image: bool = False) -> None:
         max_context_length=MAX_CTX_LENGTH,
         top_k_captions=TOP_K_CAPTIONS,
         top_k_images=TOP_K_RAG_IMAGES,
+        caption_sort_by=TEXT_RAG_CAPTION_SORT_BY,
     )
     test_loader = DataLoader(
         test_dataset,

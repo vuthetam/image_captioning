@@ -10,6 +10,7 @@ Tên script sinh caption thống nhất theo dạng `generate_<loại>_captions.
 | Image RAG | `script/image_rag/generate_rag_captions.py` |
 | Text RAG | `script/text_rag/generate_rag_captions.py` |
 | Multimodal RAG | `script/multimodal_rag/generate_rag_captions.py` |
+| Fact RAG | `script/fact_rag/generate_rag_captions.py` |
 
 Mã nguồn và script V1–V4 đã được loại bỏ. Baseline được tách riêng trong
 `src/baseline` và `script/baseline`. Baseline, image RAG, text RAG và multimodal RAG vẫn dùng
@@ -24,7 +25,7 @@ các ví dụ bên dưới dành cho lần chạy mới.
 ## 1. Chuẩn bị dữ liệu
 
 ```bash
-python script/preprocess_dfs.py
+python script/shared/preprocess_dfs.py
 ```
 
 Script đọc `dataset_coco.json`, tách dữ liệu thành train/validation/test và tạo:
@@ -32,6 +33,9 @@ Script đọc `dataset_coco.json`, tách dữ liệu thành train/validation/tes
 - `artifacts/splits/train_df.parquet`
 - `artifacts/splits/val_df.parquet`
 - `artifacts/splits/test_df.parquet`
+
+Cả ba split giữ `imgid` nội bộ và bổ sung `cocoid` (COCO image ID) từ JSON gốc.
+Test vẫn có một dòng cho mỗi ảnh, kèm toàn bộ caption tham chiếu.
 
 ## 2. Tạo vocabulary
 
@@ -325,7 +329,8 @@ TEXT_RAG_CAPTION_SORT_BY=clip
 Với `itm`, text RAG sắp xếp toàn bộ nhóm caption đã truy hồi theo `itm_scores` giảm dần,
 rồi lấy `TOP_K_CAPTIONS` trước khi ghép và cắt context. Khi điểm bằng nhau,
 giữ thứ tự CLIP. Tùy chọn áp dụng cho cả train, validation và generate của text RAG;
-multimodal RAG vẫn dùng thứ tự CLIP. File `*_i2t.parquet` phải có `itm_scores`
+multimodal RAG cũng dùng cùng biến cấu hình khi train và generate, kể cả `--no-input-image`.
+File `*_i2t.parquet` phải có `itm_scores`
 hợp lệ và cùng số phần tử với `tokens`; thiếu hoặc lệch điểm sẽ báo lỗi.
 Không cần chạy lại truy hồi nếu các file đã có cột này. Dùng cùng lựa chọn khi train
 và generate, và đặt `RUN_MODE` riêng khi so sánh hai cách chọn caption.
@@ -476,3 +481,75 @@ Các biến được định nghĩa trong `src/shared/config.py`:
 | `RUN_MODE` | `baseline` |
 
 Có thể ghi đè bằng biến môi trường hoặc file `.env`.
+
+## 9. Fact RAG: fusion patch ảnh với facts
+
+Pipeline riêng trong `src/fact_rag` và `script/fact_rag` dùng các file
+`TRAIN_I2T_PATH`, `VAL_I2T_PATH`, `TEST_I2T_PATH` trong `RAG_CONTEXTS_DIR`.
+Mỗi dòng context được nối với ảnh query bằng `imgid`. Các cột `object_texts`,
+`attribute_texts`, `triplet_texts` chứa danh sách facts theo từng caption retrieval.
+
+Dataset sắp xếp caption bằng `TEXT_RAG_CAPTION_SORT_BY`, chọn `TOP_K_CAPTIONS`,
+rồi gom facts theo thứ tự caption và lần lượt object/attribute/triplet.
+Chuỗi được trim và gộp whitespace; facts trùng nhau bị loại, giữ lần xuất hiện đầu.
+Giữ phân biệt hoa/thường và lấy toàn bộ facts duy nhất của các caption đã chọn.
+Với `itm`, điểm phải hữu hạn và căn hàng với caption; khi bằng điểm giữ thứ tự CLIP.
+Với `clip`, giữ thứ tự retrieval đã lưu. Thiếu context hoặc cột facts sẽ báo lỗi.
+
+CLIP Text dùng `CLIPTextModelWithProjection` và tokenizer của `VISUAL_ENCODER_MODEL`.
+Encoder được đóng băng và chạy eval, trả về một projected text embedding gốc cho mỗi fact,
+không L2 normalize. Kích thước vector được đọc từ model, không cố định 512.
+Fact vượt giới hạn token của CLIP sẽ báo lỗi thay vì bị cắt âm thầm.
+
+Cache lười lưu vector CLIP FP32 trong RAM CPU, tra bằng chuỗi fact đã chuẩn hóa.
+Mỗi process sở hữu encoder và cache riêng; train và validation dùng chung cache của process đó.
+Trong mỗi batch, encoder chỉ xử lý các chuỗi chưa có trong cache, gom cache misses thành
+các nhóm tối đa `FACT_TEXT_BATCH_SIZE` phrases. CLIP Text chạy trên `accelerator.device`,
+không autocast; các vector cần dùng được gom và chuyển lên GPU theo batch.
+Cache tồn tại trong thời gian process chạy; generate hoặc restart tạo cache mới.
+Cache và trọng số CLIP Text nằm ngoài captioner, không được lưu vào checkpoint của captioner.
+Projector trainable được tính lại mỗi batch từ vector CLIP đã cache.
+
+Luồng memory:
+
+```text
+Ảnh query: HDF5 CLS + patches → bỏ CLS (mặc định) → Linear → LayerNorm → V
+Facts: CLIP embedding từ cache → Linear riêng → LayerNorm → F
+
+A      = MultiHeadAttention(Q=V, K=F, Value=F, fact_padding_mask)
+H      = LayerNorm(V + Dropout(A))
+memory = LayerNorm(H + Dropout(FFN(H)))
+```
+
+FFN có chiều ẩn `4 * DMODEL`. Mặc định một block; `FACT_FUSION_NLAYERS` điều chỉnh số block.
+Các block dùng `NHEADS` và `DROPOUT` hiện có. Số token memory bằng số patch ảnh;
+caption tokens và CLS của ảnh retrieval không tham gia memory.
+Fact padding được che trong attention. Mỗi ảnh phải có ít nhất một fact sau khi chọn
+top K caption và khử trùng; nếu không, dataset báo lỗi kèm `imgid`.
+Model, engine train/eval và hàm generate nhận cờ `include_cls_token` (mặc định `False`)
+để giữ CLS nếu thí nghiệm cần dùng token này.
+
+Đặt một `RUN_MODE` mới trong `.env`, ví dụ:
+
+```dotenv
+RUN_MODE=fact_rag_itm_sort
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_FUSION_NLAYERS=1
+FACT_TEXT_BATCH_SIZE=128
+```
+
+`FACT_TEXT_BATCH_SIZE` đếm facts chưa cache, độc lập với `BATCH_SIZE` đếm ảnh/caption mẫu
+trên mỗi GPU. Visual features HDF5 phải được trích bằng cùng `VISUAL_ENCODER_MODEL`
+dùng cho CLIP Text. Giữ cùng model, vocabulary, sort, top K và kiến trúc khi resume/generate.
+Checkpoint/kết quả vẫn được tách theo `RUN_MODE` như các pipeline khác.
+
+```bash
+accelerate launch script/fact_rag/train_rag.py
+accelerate launch script/fact_rag/generate_rag_captions.py
+python script/shared/evaluate.py
+```
+
+Train dùng teacher forcing; generate gọi `encode_memory()` một lần cho mỗi batch rồi
+beam search bằng decoder dùng chung. Optimizer, warmup/cosine, checkpoint và chuẩn hóa
+loss theo tổng số token hợp lệ trên các process dùng cùng cơ chế của các pipeline hiện có.

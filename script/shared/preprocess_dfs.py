@@ -38,16 +38,17 @@ def build_split_dataframes(dataset_path: Path) -> tuple[pd.DataFrame, pd.DataFra
     images_df = pd.json_normalize(
         data["images"],
         record_path="sentences",
-        meta=["filepath", "filename", "split"],
+        meta=["filepath", "filename", "split", "cocoid"],
     )
+    images_df["cocoid"] = images_df["cocoid"].astype("int64")
 
     train_df = images_df[images_df["split"].isin(["train", "restval"])].reset_index(drop=True)
     val_df = images_df[images_df["split"] == "val"].reset_index(drop=True)
-    # test set: one row per unique image, all 5 reference captions collected for scoring
+    # Test set: one row per image, retaining its COCO ID and all reference captions.
     test_raw = images_df[images_df["split"] == "test"]
     test_df = (
         test_raw.groupby(["imgid", "filepath", "filename", "split"], sort=False)
-        .agg(all_tokens=("tokens", list), all_raws=("raw", list))
+        .agg(all_tokens=("tokens", list), all_raws=("raw", list), cocoid=("cocoid", "first"))
         .reset_index()
     )
     return train_df, val_df, test_df

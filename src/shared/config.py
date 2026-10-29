@@ -183,7 +183,7 @@ TOP_K_RAG_IMAGES = int(os.getenv("TOP_K_RAG_IMAGES", "4"))
 # Text RAG and multimodal RAG.
 CTX_NLAYERS = int(os.getenv("CTX_NLAYERS", "2"))
 TOP_K_CAPTIONS = int(os.getenv("TOP_K_CAPTIONS", "4"))
-# Text RAG: rank by descending ITM by default; 'clip' preserves retrieval order.
+# Caption selection for text, multimodal and fact RAG; 'clip' preserves stored order.
 TEXT_RAG_CAPTION_SORT_BY = os.getenv("TEXT_RAG_CAPTION_SORT_BY", "itm").strip().lower()
 CTX_TOKENS_PER_CAPTION = int(os.getenv("CTX_TOKENS_PER_CAPTION", "22"))
 MAX_CTX_LENGTH = int(
@@ -192,3 +192,7 @@ MAX_CTX_LENGTH = int(
         str(TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + TOP_K_CAPTIONS),
     )
 )
+
+# Fact RAG: fusion depth and the maximum number of uncached phrases encoded at once.
+FACT_FUSION_NLAYERS = int(os.getenv("FACT_FUSION_NLAYERS", "1"))
+FACT_TEXT_BATCH_SIZE = int(os.getenv("FACT_TEXT_BATCH_SIZE", "128"))
