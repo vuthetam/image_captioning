@@ -29,10 +29,9 @@ def encode_rag_context(
     padding_length = max_context_length - len(token_ids)
     token_ids.extend([vocab.pad_idx()] * padding_length)
     attention_mask.extend([0] * padding_length)
-    return (
-        torch.tensor(token_ids, dtype=torch.long),
-        torch.tensor(attention_mask, dtype=torch.long),
-    )
+    token_ids = torch.tensor(token_ids, dtype=torch.long)
+    attention_mask = torch.tensor(attention_mask, dtype=torch.long)
+    return token_ids, attention_mask
 
 
 class RAGFeatureCaptionDataset(Dataset):

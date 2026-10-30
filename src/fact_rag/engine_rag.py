@@ -5,7 +5,7 @@ from accelerate import Accelerator
 from torch import nn
 from tqdm.auto import tqdm
 
-from src.fact_rag.encoder import CachedCLIPFactEncoder
+from src.shared.facts.encoder import CachedCLIPFactEncoder
 from src.shared.utils import trainable_parameters
 
 
@@ -25,7 +25,8 @@ def _step(model, batch, fact_encoder, pad_idx, device, include_cls_token=False):
         logits.reshape(-1, logits.size(-1)), targets.reshape(-1),
         ignore_index=pad_idx, reduction="sum",
     )
-    return loss_sum, (targets != pad_idx).sum()
+    num_tokens = (targets != pad_idx).sum()
+    return loss_sum, num_tokens
 
 
 def train_one_epoch(

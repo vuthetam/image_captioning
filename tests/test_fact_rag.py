@@ -15,8 +15,8 @@ import pyarrow.parquet as pq
 import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection
 
-from src.fact_rag.dataset import load_rag_fact_lookup, RAGFeatureDataset, collate_fact_batch
-from src.fact_rag.encoder import CachedCLIPFactEncoder
+from src.shared.facts.dataset import load_rag_fact_lookup, RAGFeatureDataset, collate_fact_batch
+from src.shared.facts.encoder import CachedCLIPFactEncoder
 from src.fact_rag.models import FactRAGCaptioner
 from src.shared.vocabulary import Vocabulary
 from src.shared.inference import beam_search
@@ -129,8 +129,8 @@ class FactCacheTests(unittest.TestCase):
         for output_format in ("tensor", "tuple"):
             with self.subTest(output_format=output_format):
                 model, tokenizer = tiny_clip(), TinyTokenizer()
-                with patch("src.fact_rag.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
-                     patch("src.fact_rag.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=model):
+                with patch("src.shared.facts.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
+                     patch("src.shared.facts.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=model):
                     encoder = CachedCLIPFactEncoder("test/clip", "cpu")
                 output = model(**TinyTokenizer()(["dog", "tree"]))
                 expected = output.text_embeds.detach()
@@ -149,8 +149,8 @@ class FactCacheTests(unittest.TestCase):
     def test_real_clip_projected_output_is_cached_on_cpu_without_normalization(self):
         torch.manual_seed(7)
         model, tokenizer = tiny_clip(), TinyTokenizer()
-        with patch("src.fact_rag.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
-             patch("src.fact_rag.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=model):
+        with patch("src.shared.facts.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
+             patch("src.shared.facts.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=model):
             encoder = CachedCLIPFactEncoder("test/clip", "cpu", batch_size=2)
         expected = model(**TinyTokenizer()(["dog", "red dog"])).text_embeds.detach()
         with torch.autocast("cpu", dtype=torch.bfloat16):
@@ -180,8 +180,8 @@ class FusionTests(unittest.TestCase):
     def test_cuda_one_batch_with_frozen_clip_and_mixed_precision(self):
         setup_reproducibility(42)
         model, tokenizer = tiny_clip(), TinyTokenizer()
-        with patch("src.fact_rag.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
-             patch("src.fact_rag.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=model):
+        with patch("src.shared.facts.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
+             patch("src.shared.facts.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=model):
             encoder = CachedCLIPFactEncoder("test/clip", "cuda", batch_size=2)
         facts, valid = encoder.encode([["dog", "tree"], ["tree"], ["dog"]])
         vocab = Vocabulary(freq_threshold=1)
@@ -284,8 +284,8 @@ class FactScriptTests(unittest.TestCase):
                 VISUAL_ENCODER_MODEL="test/clip", TEXT_RAG_CAPTION_SORT_BY="itm", TOP_K_CAPTIONS=2,
                 VOCAB_PATH=vocab_path, BEST_CHECKPOINT_PATH=root / "best.pth", RUN_MODE="fact_test",
             )
-            with patch("src.fact_rag.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
-                 patch("src.fact_rag.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=text_model), \
+            with patch("src.shared.facts.encoder.AutoTokenizer.from_pretrained", return_value=tokenizer), \
+                 patch("src.shared.facts.encoder.CLIPTextModelWithProjection.from_pretrained", return_value=text_model), \
                  patch.object(train, "Accelerator", return_value=accelerator), \
                  patch.object(generate, "Accelerator", return_value=accelerator), \
                  patch.object(train, "CachedCLIPFactEncoder", side_effect=make_encoder), \

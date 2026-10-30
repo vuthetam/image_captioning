@@ -1,4 +1,4 @@
-"""Shared configuration for baseline, image, text and multimodal RAG runs."""
+"""Shared configuration for baseline and retrieval-augmented captioning runs."""
 
 import os
 from pathlib import Path
@@ -180,10 +180,10 @@ BEAM_SIZE = int(os.getenv("BEAM_SIZE", "5"))
 # Image RAG and multimodal RAG.
 TOP_K_RAG_IMAGES = int(os.getenv("TOP_K_RAG_IMAGES", "4"))
 
-# Text RAG and multimodal RAG.
+# Caption context for text, multimodal and fact-text RAG.
 CTX_NLAYERS = int(os.getenv("CTX_NLAYERS", "2"))
 TOP_K_CAPTIONS = int(os.getenv("TOP_K_CAPTIONS", "4"))
-# Caption selection for text, multimodal and fact RAG; 'clip' preserves stored order.
+# Caption selection for all text/fact pipelines; 'clip' preserves stored order.
 TEXT_RAG_CAPTION_SORT_BY = os.getenv("TEXT_RAG_CAPTION_SORT_BY", "itm").strip().lower()
 CTX_TOKENS_PER_CAPTION = int(os.getenv("CTX_TOKENS_PER_CAPTION", "22"))
 MAX_CTX_LENGTH = int(
@@ -193,6 +193,6 @@ MAX_CTX_LENGTH = int(
     )
 )
 
-# Fact RAG: fusion depth and the maximum number of uncached phrases encoded at once.
+# All fact pipelines: fusion depth and the maximum uncached phrases encoded at once.
 FACT_FUSION_NLAYERS = int(os.getenv("FACT_FUSION_NLAYERS", "1"))
 FACT_TEXT_BATCH_SIZE = int(os.getenv("FACT_TEXT_BATCH_SIZE", "128"))

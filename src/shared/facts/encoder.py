@@ -1,7 +1,7 @@
 import torch
 from transformers import AutoTokenizer, CLIPTextModelWithProjection
 
-from src.fact_rag.dataset import normalize_fact
+from src.shared.facts.dataset import normalize_fact
 from src.shared.utils import extract_global_embedding
 
 
@@ -55,9 +55,12 @@ class CachedCLIPFactEncoder:
                     self.cache[text] = embedding.clone()
 
         max_facts = max(map(len, groups))
-        features = torch.zeros(len(groups), max_facts, self.output_dim, dtype=torch.float32)
-        mask = torch.zeros(len(groups), max_facts, dtype=torch.bool)
+        fact_features = torch.zeros(len(groups), max_facts, self.output_dim, dtype=torch.float32)
+        fact_mask = torch.zeros(len(groups), max_facts, dtype=torch.bool)
         for index, facts in enumerate(groups):
-            features[index, :len(facts)] = torch.stack([self.cache[fact] for fact in facts])
-            mask[index, :len(facts)] = True
-        return features.to(self.device), mask.to(self.device)
+            fact_features[index, :len(facts)] = torch.stack([self.cache[fact] for fact in facts])
+            fact_mask[index, :len(facts)] = True
+        fact_features = fact_features.to(self.device)
+        fact_mask = fact_mask.to(self.device)
+
+        return fact_features, fact_mask

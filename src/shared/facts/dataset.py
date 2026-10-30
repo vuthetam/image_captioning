@@ -31,10 +31,10 @@ def load_rag_fact_lookup(context_path: str | Path, top_k: int, caption_sort_by: 
     if missing:
         raise ValueError(f"Missing fact context columns {sorted(missing)}: {context_path}")
 
-    lookup = {}
+    fact_lookup = {}
     for row in pq.read_table(context_path, columns=columns).to_pylist():
         imgid = int(row["imgid"])
-        if imgid in lookup:
+        if imgid in fact_lookup:
             raise ValueError(f"Duplicate fact context imgid={imgid}: {context_path}")
         captions = row["captions"]
         if not isinstance(captions, list):
@@ -48,16 +48,17 @@ def load_rag_fact_lookup(context_path: str | Path, top_k: int, caption_sort_by: 
         order = rag_caption_order(
             len(captions), caption_sort_by, row.get("itm_scores"), f"for imgid={imgid}: {context_path}"
         )
+        selected_indices = order[:top_k]
         facts, seen = [], set()
-        for caption_index in order[:top_k]:
+        for caption_index in selected_indices:
             for column in FACT_COLUMNS:
                 for text in row[column][caption_index]:
                     fact = normalize_fact(text)
                     if fact and fact not in seen:
                         seen.add(fact)
                         facts.append(fact)
-        lookup[imgid] = facts
-    return lookup
+        fact_lookup[imgid] = facts
+    return fact_lookup
 
 
 class RAGFeatureDataset(Dataset):

@@ -553,3 +553,111 @@ python script/shared/evaluate.py
 Train dùng teacher forcing; generate gọi `encode_memory()` một lần cho mỗi batch rồi
 beam search bằng decoder dùng chung. Optimizer, warmup/cosine, checkpoint và chuẩn hóa
 loss theo tổng số token hợp lệ trên các process dùng cùng cơ chế của các pipeline hiện có.
+
+## 10. Fact RAG với memory bổ sung cho decoder
+
+Hai pipeline mới giữ bước fusion của Fact RAG và ghép thêm một nguồn memory
+để decoder truy cập trực tiếp. Ký hiệu:
+
+```text
+V = Linear -> LayerNorm(patch ảnh)
+F = Linear riêng -> LayerNorm(CLIP Text facts)
+U = FactFusion(Q=V, K=F, Value=F)
+C = TextContextEncoder(tokens của caption truy hồi)
+
+fact_text_rag:   memory = concat(U, C)
+fact_memory_rag: memory = concat(U, F)
+```
+
+`concat` nối theo chiều token, không nối chiều đặc trưng. Mọi token có chiều
+`DMODEL`. Mỗi fusion block vẫn có cross-attention, residual + LayerNorm, FFN,
+residual + LayerNorm như Fact RAG hiện có. Mặc định một block và bỏ CLS;
+model, engine và inference vẫn nhận cờ `include_cls_token`.
+
+### Fact Text RAG: fusion ảnh–facts và caption memory
+
+Mã nguồn trong `src/fact_text_rag`, script trong `script/fact_text_rag`.
+Dataset lấy facts qua loader chung và caption tokens qua loader riêng của pipeline;
+cả hai dùng `TEXT_RAG_CAPTION_SORT_BY` và `TOP_K_CAPTIONS`, nên lấy đúng cùng tập caption.
+Cột `tokens` phải căn hàng với `captions` và ba cột facts.
+
+Caption context dùng cùng cách tokenize theo vocabulary, phân cách bằng `<eos>`,
+cắt/padding tới `MAX_CTX_LENGTH` như Text RAG. Context encoder dùng
+`CTX_NLAYERS`, positional encoding và chia sẻ token embedding với decoder.
+Nhánh này được train và không cache đầu ra context encoder.
+
+Đặt trong `.env`, ví dụ:
+
+```dotenv
+RUN_MODE=fact_text_rag_itm_sort
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_FUSION_NLAYERS=1
+FACT_TEXT_BATCH_SIZE=128
+CTX_NLAYERS=2
+```
+
+`MAX_CTX_LENGTH` giữ cách tính mặc định từ top K và `CTX_TOKENS_PER_CAPTION`,
+hoặc có thể đặt tường minh như Text RAG.
+
+```bash
+accelerate launch script/fact_text_rag/train_rag.py
+accelerate launch script/fact_text_rag/generate_rag_captions.py
+python script/shared/evaluate.py
+```
+
+### Fact Memory RAG: fusion ảnh–facts và fact memory
+
+Mã nguồn trong `src/fact_memory_rag`, script trong `script/fact_memory_rag`.
+Pipeline này không có caption context encoder. `F` được tính một lần và dùng
+chung cho K/V trong fusion và phần memory ghép thêm. Không encode CLIP lần hai,
+không thêm projector thứ hai và không detach `F`: gradient từ cả hai đường
+đều cập nhật fact projector.
+
+Số facts linh hoạt theo ảnh. Encoder padding theo số facts lớn nhất của batch;
+memory có chiều `[batch, số patches + số fact slots, DMODEL]`. Decoder nhận mask
+`concat(mask patches toàn False, mask fact padding)` trong cả teacher forcing
+và beam search. Với Fact Text RAG, phần mask bổ sung lấy từ caption context.
+Các vị trí padding không tham gia decoder cross-attention.
+
+Đổi sang một `RUN_MODE` khác trong `.env`, ví dụ:
+
+```dotenv
+RUN_MODE=fact_memory_rag_itm_sort
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_FUSION_NLAYERS=1
+FACT_TEXT_BATCH_SIZE=128
+```
+
+```bash
+accelerate launch script/fact_memory_rag/train_rag.py
+accelerate launch script/fact_memory_rag/generate_rag_captions.py
+python script/shared/evaluate.py
+```
+
+Cả hai dùng `VISUAL_ENCODER_MODEL` cho CLIP Text đóng băng, projected embedding
+gốc không L2 normalize, loại trùng chuỗi trước encode và cache lười FP32 trong
+RAM CPU riêng từng process như Fact RAG. Không thêm ngưỡng hay giới hạn facts.
+Mẫu không có facts báo lỗi; Fact Text RAG cũng báo lỗi nếu context caption rỗng.
+Generate tính memory một lần mỗi batch và truyền cả memory lẫn padding mask
+vào beam search. Dataset/collate vẫn trả tuple.
+
+Trong phần bổ sung này, `src/shared` chỉ giữ ba thành phần lõi dùng cho cả ba
+pipeline facts: `src/shared/facts/dataset.py`, `src/shared/facts/encoder.py` và `src/shared/facts/fusion.py`.
+Mỗi pipeline có engine, inference, decoder và script train/generate riêng.
+Fact Text RAG cũng có caption context encoder và hàm encode caption tokens riêng;
+Text RAG giữ các thành phần của nó trong `src/text_rag`.
+Engine và inference unpack tuple tường minh theo từng pipeline, không suy đoán
+loại batch bằng số phần tử. Script khởi tạo trực tiếp dataset và model, không
+qua runner dùng chung hay cờ chọn loại caption context.
+
+Tên tham số checkpoint và hành vi mô hình được giữ nguyên khi tổ chức lại mã.
+Các pipeline mới cần checkpoint riêng theo `RUN_MODE`; `RUN_MODE` chỉ đặt tên
+thí nghiệm, script quyết định kiến trúc. Khi generate phải dùng đúng script,
+sort, top K và cấu hình train.
+
+Kiểm tra tự động dùng dữ liệu nhỏ và CLIP Text nhỏ khởi tạo tại chỗ, không tải
+model: mỗi pipeline một batch train/validation/generate, `num_workers=0`.
+Tests kiểm tra cùng nguồn caption/facts, padding mask, gradient, tái sử dụng F,
+cache train–validation và cache mới khi generate, cùng CUDA FP16 nếu có GPU.

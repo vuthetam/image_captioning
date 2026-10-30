@@ -1,4 +1,5 @@
 import math
+
 from torch import Tensor, nn
 
 from src.shared.decoder import PositionalEncoding

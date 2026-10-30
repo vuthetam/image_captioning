@@ -5,7 +5,7 @@ from accelerate import Accelerator
 from torch import nn
 from tqdm.auto import tqdm
 
-from src.fact_rag.encoder import CachedCLIPFactEncoder
+from src.shared.facts.encoder import CachedCLIPFactEncoder
 from src.shared.inference import beam_search
 from src.shared.vocabulary import Vocabulary
 
