@@ -84,8 +84,12 @@ def main() -> None:
 
     if accelerator.is_main_process:
         predictions = [
-            {"imgid": int(imgid), "caption": " ".join(caption_dict[imgid])}
-            for imgid in test_df["imgid"]
+            {
+                "imgid": int(imgid),
+                "cocoid": int(cocoid),
+                "caption": " ".join(caption_dict[int(imgid)]),
+            }
+            for imgid, cocoid in test_df[["imgid", "cocoid"]].itertuples(index=False, name=None)
         ]
         PREDICTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
         with PREDICTIONS_PATH.open("w", encoding="utf-8") as output_file:

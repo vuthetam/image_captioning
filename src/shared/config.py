@@ -52,6 +52,9 @@ DATASET_COCO_PATH = Path(
 IMAGES_DIR = Path(
     os.getenv("IMAGES_PATH", str(ROOT_PATH / "dataset" / "mscoco" / "images"))
 )
+COCO_ANNOTATIONS_DIR = Path(
+    os.getenv("COCO_ANNOTATIONS_DIR", str(DATASET_COCO_PATH.parent / "annotations"))
+)
 
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", str(ROOT_PATH / "artifacts")))
 safe_mkdir(ARTIFACTS_DIR)
@@ -138,6 +141,8 @@ RESULT_DIR = ARTIFACTS_DIR / "results" / RUN_MODE
 safe_mkdir(RESULT_DIR)
 PREDICTIONS_PATH = RESULT_DIR / "predictions.json"
 METRICS_PATH = RESULT_DIR / "metrics.json"
+CHAIR_DETAILS_PATH = RESULT_DIR / "chair_details.json"
+CHAIR_CACHE_PATH = ARTIFACTS_DIR / "chair" / "opera_cli.pkl"
 
 CHECKPOINTS_DIR = Path(os.getenv("CHECKPOINTS_DIR", str(ROOT_PATH / "checkpoints")))
 RUN_CHECKPOINT_DIR = CHECKPOINTS_DIR / RUN_MODE

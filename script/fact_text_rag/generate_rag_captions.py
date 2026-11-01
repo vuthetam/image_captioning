@@ -64,8 +64,14 @@ def main() -> None:
         include_cls_token=False,
     )
     if accelerator.is_main_process:
-        predictions = [{"imgid": int(imgid), "caption": " ".join(captions[int(imgid)])}
-                       for imgid in test_df["imgid"]]
+        predictions = [
+            {
+                "imgid": int(imgid),
+                "cocoid": int(cocoid),
+                "caption": " ".join(captions[int(imgid)]),
+            }
+            for imgid, cocoid in test_df[["imgid", "cocoid"]].itertuples(index=False, name=None)
+        ]
         PREDICTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
         PREDICTIONS_PATH.write_text(json.dumps(predictions, ensure_ascii=False, indent=2), encoding="utf-8")
         accelerator.print(f"Saved {len(predictions):,} captions to {PREDICTIONS_PATH}")

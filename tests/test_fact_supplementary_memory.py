@@ -270,7 +270,7 @@ class SupplementaryScriptTests(unittest.TestCase):
             split = root / "split.parquet"
             frame.to_parquet(split, index=False)
             test_split = root / "test.parquet"
-            pd.DataFrame({"imgid": [7, 8]}).to_parquet(test_split, index=False)
+            pd.DataFrame({"imgid": [7, 8], "cocoid": [101, 202]}).to_parquet(test_split, index=False)
             vocab = Vocabulary(freq_threshold=1)
             vocab.build_vocabulary([["dog", "tree", "red", "on", "grass"]])
             vocab_path = vocab.save(root / "vocab.json")
@@ -332,6 +332,7 @@ class SupplementaryScriptTests(unittest.TestCase):
             self.assertTrue(padding.any())
             predictions = json.loads(settings["PREDICTIONS_PATH"].read_text(encoding="utf-8"))
             self.assertEqual([row["imgid"] for row in predictions], [7, 8])
+            self.assertEqual([row["cocoid"] for row in predictions], [101, 202])
             self.assertTrue(all(isinstance(row["caption"], str) for row in predictions))
             self.assertEqual(len(encoders[1].cache), 4)
             self.assertEqual(len(tokenizer.calls), 4)  # Generation owns a fresh cache.

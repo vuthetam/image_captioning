@@ -274,7 +274,7 @@ class FactScriptTests(unittest.TestCase):
             split = root / "split.parquet"
             frame.to_parquet(split, index=False)
             test_split = root / "test.parquet"
-            pd.DataFrame({"imgid": [7, 8]}).to_parquet(test_split, index=False)
+            pd.DataFrame({"imgid": [7, 8], "cocoid": [101, 202]}).to_parquet(test_split, index=False)
             vocab = Vocabulary(freq_threshold=1)
             vocab.build_vocabulary(frame["tokens"])
             vocab_path = vocab.save(root / "vocab.json")
@@ -313,6 +313,7 @@ class FactScriptTests(unittest.TestCase):
                 import json
                 predictions = json.loads((root / "predictions.json").read_text(encoding="utf-8"))
                 self.assertEqual([item["imgid"] for item in predictions], [7, 8])
+                self.assertEqual([item["cocoid"] for item in predictions], [101, 202])
                 self.assertTrue(all(isinstance(item["caption"], str) for item in predictions))
                 self.assertEqual(len(encoders[1].cache), 5)
                 self.assertGreater(len(tokenizer.calls), calls_after_train)

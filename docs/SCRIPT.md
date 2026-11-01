@@ -474,6 +474,7 @@ Các biến được định nghĩa trong `src/shared/config.py`:
 | Biến | Mặc định |
 | --- | --- |
 | `DATASET_COCO_PATH` | `dataset/mscoco/dataset_coco.json` |
+| `COCO_ANNOTATIONS_DIR` | thư mục `annotations` cạnh `DATASET_COCO_PATH` |
 | `IMAGES_PATH` | `dataset/mscoco/images` |
 | `ARTIFACTS_DIR` | `artifacts` |
 | `VISUAL_FEATURES_DIR` | `artifacts/visual_features` |
@@ -661,3 +662,71 @@ Kiểm tra tự động dùng dữ liệu nhỏ và CLIP Text nhỏ khởi tạo
 model: mỗi pipeline một batch train/validation/generate, `num_workers=0`.
 Tests kiểm tra cùng nguồn caption/facts, padding mask, gradient, tái sử dụng F,
 cache train–validation và cache mới khi generate, cùng CUDA FP16 nếu có GPU.
+
+## 11. Bổ sung COCO ID vào predictions
+
+Các script generate của baseline, image/text/multimodal RAG và ba pipeline facts
+ghi trực tiếp `imgid`, `cocoid`, `caption` vào `predictions.json`. `cocoid` lấy từ
+test split; evaluator captioning hiện tại vẫn dùng `imgid`. Script dưới đây dùng
+để bổ sung `cocoid` cho các file kết quả cũ.
+
+```bash
+python script/shared/add_cocoid_to_predictions.py
+```
+
+Mặc định đọc `PREDICTIONS_PATH` theo `RUN_MODE` và ánh xạ `imgid` sang `cocoid`
+từ `TEST_DF_PATH`. Xuất `predictions_cocoid.json` cùng thư mục; giữ nguyên
+file gốc, thứ tự, caption và các trường có sẵn. Có thể chỉ định file khác:
+
+```bash
+python script/shared/add_cocoid_to_predictions.py --predictions artifacts/results/fact_rag_itm_sort/predictions.json
+```
+
+Các tùy chọn khác: `--test-df` và `--output`. Script báo lỗi nếu thiếu ánh xạ,
+ánh xạ không nhất quán hoặc `cocoid` có sẵn không khớp. Khi chấm bằng CHAIR
+của OPERA, dùng file mới với `--image_id_key cocoid --caption_key caption`.
+
+## 12. Đánh giá captioning và CHAIR trong cùng một lệnh
+
+```bash
+python script/shared/evaluate.py
+```
+
+Script đọc predictions theo `RUN_MODE`, chạy CHAIR trong
+`third_party/opera/chair.py` trước, rồi tính BLEU, METEOR, ROUGE-L, CIDEr và SPICE.
+Chạy tuần tự để giảm mức RAM sử dụng cùng lúc. Chỉ ghép và ghi `metrics.json`
+khi cả hai phần thành công; nếu CHAIR lỗi thì dừng trước bước tính metric captioning.
+CHAIR dùng `cocoid`; các metric captioning tiếp tục dùng `imgid`.
+File predictions phải có `cocoid` trong từng dòng; dùng script ở mục 11
+cho các kết quả cũ chưa có trường này. Sau khi giữ bản sao file gốc, đổi tên
+`predictions_cocoid.json` thành `predictions.json` trong thư mục kết quả tương ứng
+để `evaluate.py` đọc được.
+
+Chuẩn bị `captions_train2014.json`, `captions_val2014.json`,
+`instances_train2014.json`, `instances_val2014.json` trong `COCO_ANNOTATIONS_DIR`.
+Mặc định thư mục này nằm cạnh `dataset_coco.json`; có thể ghi đè trong `.env`:
+
+```dotenv
+COCO_ANNOTATIONS_DIR=D:/workspace/ML/dataset/mscoco/annotations
+```
+
+Cài tài nguyên xử lý tiếng Anh một lần trong môi trường chạy:
+
+```bash
+python -m pip install nltk tqdm
+python -m nltk.downloader punkt_tab averaged_perceptron_tagger_eng wordnet
+```
+
+Kết quả lưu trong `artifacts/results/<RUN_MODE>/`:
+
+- `metrics.json`: các metric hiện có, thêm `CHAIRs` và `CHAIRi`.
+- `chair_details.json`: đầu ra evaluator OPERA, gồm điểm tổng, Recall,
+  danh sách đối tượng và đối tượng hallucinate của từng caption.
+
+CHAIRs/CHAIRi càng thấp càng tốt. JSON lưu tỷ lệ gốc; console hiển thị ×100
+như các metric hiện có. Evaluator giữ nguyên cách tính của file OPERA đã tải.
+Nguồn: https://github.com/shikiw/OPERA/blob/main/chair.py
+
+`evaluate.py` gọi trực tiếp CLI `chair.py`; dùng cơ chế cache sẵn có của OPERA
+tại `artifacts/chair/opera_cli.pkl`. Xoá cache nếu đổi annotations hoặc evaluator.
+Không cần train hoặc generate lại nếu predictions đã có `cocoid`.
