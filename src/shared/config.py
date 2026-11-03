@@ -122,9 +122,9 @@ I2T_KB_MANIFEST_PATH = KB_DIR / "kb_i2t_manifest.json"
 I2I_KB_FAISS_INDEX_PATH = KB_DIR / "kb_i2i_index.faiss"
 I2I_KB_METADATA_PATH = KB_DIR / "kb_i2i_metadata.parquet"
 
-RAG_CONTEXTS_DIR = Path(os.getenv(
-    "RAG_CONTEXTS_DIR", str(ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "rag_contexts"),
-))
+# Context folder name within the artifacts for the selected retrieval model.
+RAG_CONTEXTS_SUBDIR = os.getenv("RAG_CONTEXTS_SUBDIR", "rag_contexts")
+RAG_CONTEXTS_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / RAG_CONTEXTS_SUBDIR
 safe_mkdir(RAG_CONTEXTS_DIR)
 
 # I2T (Image-to-Text): captions/tokens, semantic units/phrases and retrieval metadata.

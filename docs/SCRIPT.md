@@ -216,8 +216,13 @@ thư mục mới. Các file I2I nếu cần được sao chép riêng, không qu
 
 ```dotenv
 I2T_KB_METADATA_PATH=path/to/kb_i2t_metadata_aliases.parquet
-RAG_CONTEXTS_DIR=path/to/rag_contexts_aliases
+RAG_CONTEXTS_SUBDIR=rag_contexts_aliases
 ```
+
+`RAG_CONTEXTS_SUBDIR` chỉ là tên thư mục contexts (mặc định `rag_contexts`). Config
+tự ghép `ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / RAG_CONTEXTS_SUBDIR`, nên đường dẫn
+contexts tự theo retrieval model đã chọn. Dùng `RAG_CONTEXTS_SUBDIR` thay cho biến
+đường dẫn đầy đủ `RAG_CONTEXTS_DIR` trong `.env`.
 
 Không cần tạo lại FAISS index vì captions và thứ tự dòng metadata không thay đổi.
 Các contexts mới đã giữ nguyên captions, CLIP/ITM scores và thứ tự truy hồi nên không
