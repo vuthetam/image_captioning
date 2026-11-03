@@ -170,9 +170,8 @@ class GraphLinearizer:
     def _text(self, phrase) -> str:
         return self.realiser.realise(phrase).getRealisation().strip()
 
-    def _noun(self, entity, adjective=None) -> str:
+    def _noun(self, label, adjective=None) -> str:
         """Keep the supplied noun form without a determiner or quantity."""
-        label = object_label(entity["head"])
         return f"{adjective} {label}" if adjective else label
 
     def _edge_phrase(self, subject, predicate, obj=None):
@@ -202,6 +201,44 @@ class GraphLinearizer:
             parts.append(self._noun(obj))
         return " ".join(parts)
 
+    def linearize_facts(self, objects, attributes, triplets, entity_aliases=None):
+        """Realize stored facts, optionally replacing whole entity names first.
+
+        Input facts and their order are preserved. Only noun labels use aliases;
+        attributes, predicates, and active/passive voice keep their original form.
+        """
+        aliases = entity_aliases if entity_aliases is not None else {}
+        object_texts = [self._noun(aliases.get(label, label)) for label in objects]
+
+        attribute_texts = []
+        for fact in attributes:
+            label = fact["object"]
+            label = aliases.get(label, label)
+            attribute = fact["attribute"]
+            if attribute.startswith(("v:", "pv:")):
+                text = self._edge_phrase(label, attribute)
+            elif self.lexicon.hasWord(attribute, self.category.ADJECTIVE):
+                text = self._noun(label, attribute)
+            else:
+                text = f"{self._noun(label)} {attribute}"
+            attribute_texts.append(text)
+
+        triplet_texts = []
+        voice_prefixes = {"active": "v:", "passive": "pv:", "unspecified": ""}
+        for fact in triplets:
+            subject_label = fact["subject"]
+            target_label = fact["object"]
+            subject = aliases.get(subject_label, subject_label)
+            obj = aliases.get(target_label, target_label)
+            predicate = voice_prefixes[fact["voice"]] + fact["predicate"]
+            triplet_texts.append(self._edge_phrase(subject, predicate, obj))
+
+        return {
+            "object_texts": object_texts,
+            "attribute_texts": attribute_texts,
+            "triplet_texts": triplet_texts,
+        }
+
     def normalize(self, graph: dict) -> dict:
         """Return objects, attributes, triplets, and their aligned phrases."""
         entities = graph["entities"]
@@ -209,19 +246,10 @@ class GraphLinearizer:
             if not object_label(entity["head"]):
                 raise ValueError("FACTUAL returned an empty entity.")
         objects = [object_label(e["head"]) for e in entities]
-        object_texts = [self._noun(e) for e in entities]
-        attributes, attribute_texts, triplets, triplet_texts = [], [], [], []
+        attributes, triplets = [], []
         for entity, label in zip(entities, objects):
             for attribute in sorted(entity.get("attributes", [])):
                 attributes.append({"object": label, "attribute": attribute})
-                if attribute.startswith(("v:", "pv:")):
-                    text = self._edge_phrase(entity, attribute)
-                elif self.lexicon.hasWord(attribute, self.category.ADJECTIVE):
-                    text = self._noun(entity, attribute)
-                else:
-                    # Preserve state phrases such as "made of wood" as suffixes.
-                    text = f"{self._noun(entity)} {attribute}"
-                attribute_texts.append(text)
         for edge in graph["relations"]:
             subject_id, object_id = edge["subject"], edge["object"]
             if not (0 <= subject_id < len(entities) and 0 <= object_id < len(entities)):
@@ -229,12 +257,8 @@ class GraphLinearizer:
             predicate, voice = predicate_parts(edge["relation"])
             triplets.append({"subject": objects[subject_id], "predicate": predicate,
                              "object": objects[object_id], "voice": voice})
-            triplet_texts.append(self._edge_phrase(
-                entities[subject_id], edge["relation"], entities[object_id]
-            ))
         return {
             "objects": objects, "attributes": attributes, "triplets": triplets,
-            "object_texts": object_texts, "attribute_texts": attribute_texts,
-            "triplet_texts": triplet_texts,
+            **self.linearize_facts(objects, attributes, triplets),
         }
 

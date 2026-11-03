@@ -160,7 +160,7 @@ Với `kb_i2t_metadata.tmp.parquet` đã hoàn tất từ script cũ (đã chuy�
 `I2T_KB_METADATA_PATH`, rồi chỉ chạy `build_kb_i2t_index.py`. Giữ nguyên nội dung và thứ tự
 dòng. Mỗi process có thanh `Encoding captions` riêng, hiển thị số caption,
 tốc độ caption/giây và thời gian còn lại cho phần dữ liệu của process đó.
-Khi thay metadata, phải tạo lại index khớp với metadata đó trước khi retrieval.
+Khi thay captions hoặc thứ tự dòng metadata, phải tạo lại index khớp trước khi retrieval.
 Không chạy builder hoặc retrieval trong cùng thư mục output đồng thời với bước đang ghi file.
 
 Kiểm tra offline (không tải trọng số FACTUAL) bằng:
@@ -168,6 +168,61 @@ Kiểm tra offline (không tải trọng số FACTUAL) bằng:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+### 3.1. Tạo bản sao facts với tên entity đã chuẩn hoá
+
+```bash
+python script/shared/normalize_kb_entities.py
+python script/shared/normalize_rag_context_entities.py --context path/to/context.parquet
+```
+
+Hai script chạy độc lập, có luồng đọc/ghi riêng:
+
+- `normalize_kb_entities.py` chỉ đọc metadata tại `I2T_KB_METADATA_PATH`, không cần contexts.
+- `normalize_rag_context_entities.py` nhận đường dẫn một file qua `--context`, không cần metadata KB.
+
+Tên entity được tra nguyên cụm, phân biệt hoa/thường trong `src/shared/entity_aliases.json`;
+có alias thì thay, không có thì giữ nguyên. Cả hai dùng `GraphLinearizer.linearize_facts()`
+để tra aliases và dùng SimpleNLG
+tạo lại **ba cột** `object_texts`, `attribute_texts`, `triplet_texts`. Attributes, predicates,
+voice, các field khác, thứ tự facts/dòng/captions và schema metadata được giữ nguyên.
+Không thay từ trong captions hay các cụm đã linearize; không gộp các entity trùng tên.
+
+Đầu ra mặc định:
+
+- Metadata mới nằm cạnh file gốc, thêm hậu tố `_aliases`: `kb_i2t_metadata_aliases.parquet`.
+- Context mới nằm cạnh file gốc, thêm hậu tố `_aliases`: `<context_stem>_aliases.parquet`.
+
+Script contexts xử lý đúng file được chỉ định, không phụ thuộc tên file hay split.
+Có thể truyền file I2T hoàn chỉnh hoặc file ứng viên CLIP, miễn là có đủ các cột facts.
+Muốn xử lý nhiều file, chạy lệnh riêng cho từng file.
+Hai script không ghi đè file nguồn hoặc output đã tồn tại, đọc/ghi theo batch trên CPU,
+không chạy lại FACTUAL, FAISS, encode captions hay chấm BLIP ITM.
+Các dependency giống bước xây metadata, nhưng không tải trọng số mô hình.
+
+Có thể chọn đường dẫn và batch size riêng:
+
+```bash
+python script/shared/normalize_kb_entities.py --metadata path/to/kb_i2t_metadata.parquet --output-metadata path/to/kb_i2t_metadata_aliases.parquet --batch-size 512
+python script/shared/normalize_rag_context_entities.py --context path/to/context.parquet --output path/to/context_aliases.parquet --batch-size 512
+```
+
+`--context` là bắt buộc; `--output` là tuỳ chọn. Để dùng thư mục contexts mới cho
+train/generate, xuất từng file với `--output` giữ tên file mà pipeline đang đọc trong
+thư mục mới. Các file I2I nếu cần được sao chép riêng, không qua bước chuẩn hoá facts.
+
+`--aliases` cho phép chọn file ánh xạ khác. Sau khi kiểm tra output, đặt đường dẫn
+đến bản sao trong `.env` hoặc biến môi trường để các script dùng dữ liệu đã chuẩn hoá:
+
+```dotenv
+I2T_KB_METADATA_PATH=path/to/kb_i2t_metadata_aliases.parquet
+RAG_CONTEXTS_DIR=path/to/rag_contexts_aliases
+```
+
+Không cần tạo lại FAISS index vì captions và thứ tự dòng metadata không thay đổi.
+Các contexts mới đã giữ nguyên captions, CLIP/ITM scores và thứ tự truy hồi nên không
+cần chạy lại `retrieve_i2t_kb.py` hoặc `score_i2t_kb.py`. Script không tự đổi cấu hình
+train/generate sang dữ liệu mới.
 
 ## 4. Retrieve context RAG
 

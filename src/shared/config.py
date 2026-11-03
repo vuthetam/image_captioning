@@ -115,12 +115,16 @@ KB_I2T_INDEX_BATCH_SIZE = int(os.getenv("KB_I2T_INDEX_BATCH_SIZE", "64"))
 KB_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "kb"
 safe_mkdir(KB_DIR)
 I2T_KB_FAISS_INDEX_PATH = KB_DIR / "kb_i2t_index.faiss"
-I2T_KB_METADATA_PATH = KB_DIR / "kb_i2t_metadata.parquet"
+I2T_KB_METADATA_PATH = Path(os.getenv(
+    "I2T_KB_METADATA_PATH", str(KB_DIR / "kb_i2t_metadata.parquet"),
+))
 I2T_KB_MANIFEST_PATH = KB_DIR / "kb_i2t_manifest.json"
 I2I_KB_FAISS_INDEX_PATH = KB_DIR / "kb_i2i_index.faiss"
 I2I_KB_METADATA_PATH = KB_DIR / "kb_i2i_metadata.parquet"
 
-RAG_CONTEXTS_DIR = ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "rag_contexts"
+RAG_CONTEXTS_DIR = Path(os.getenv(
+    "RAG_CONTEXTS_DIR", str(ARTIFACTS_DIR / RETRIEVAL_SAFE_NAME / "rag_contexts"),
+))
 safe_mkdir(RAG_CONTEXTS_DIR)
 
 # I2T (Image-to-Text): captions/tokens, semantic units/phrases and retrieval metadata.

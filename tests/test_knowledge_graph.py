@@ -136,6 +136,13 @@ class KnowledgeGraphTests(unittest.TestCase):
         self.assertEqual(source['entities'][1]['head'], 'man:1')
         self.assertEqual(source['relations'][0]['object'], 1)
 
+        # A stored label must not lose another terminal suffix during realization.
+        source = graph('sign:2026:1', 'next to', 'man', attrs=())
+        row = self.linearizer.normalize(source)
+        self.assertEqual(row['objects'][0], 'sign:2026')
+        self.assertEqual(row['object_texts'][0], 'sign:2026')
+        self.assertEqual(row['triplet_texts'], ['sign:2026 next to man'])
+
     def test_invalid_references_rejected(self):
         broken = graph()
         broken['relations'][0]['subject'] = 4
