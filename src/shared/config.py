@@ -27,6 +27,7 @@ if ENV_PATH.exists():
 
 # Experiment identifier used for both results and checkpoints.
 RUN_MODE = os.getenv("RUN_MODE", "baseline")
+SEED = int(os.getenv("SEED", "42"))
 
 
 # ==========================================
@@ -201,6 +202,11 @@ MAX_CTX_LENGTH = int(
         str(TOP_K_CAPTIONS * CTX_TOKENS_PER_CAPTION + TOP_K_CAPTIONS),
     )
 )
+
+# Supplementary fact tokens: a separate budget for each selected caption,
+# including EOS separators, while preserving every retained fact in full.
+FACT_CTX_TOKENS_PER_CAPTION = int(os.getenv("FACT_CTX_TOKENS_PER_CAPTION", "20"))
+MAX_FACT_CTX_LENGTH = TOP_K_CAPTIONS * FACT_CTX_TOKENS_PER_CAPTION
 
 # All fact pipelines: fusion depth and the maximum uncached phrases encoded at once.
 FACT_FUSION_NLAYERS = int(os.getenv("FACT_FUSION_NLAYERS", "1"))

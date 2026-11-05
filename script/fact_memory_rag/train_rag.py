@@ -17,6 +17,7 @@ from src.fact_memory_rag.engine_rag import evaluate_one_epoch, train_one_epoch
 from src.fact_memory_rag.models import FactMemoryRAGCaptioner
 from src.shared.checkpoint import load_checkpoint, save_checkpoint
 from src.shared.config import (
+    SEED,
     BATCH_SIZE, BEST_CHECKPOINT_PATH, DMODEL, DROPOUT, FACT_FUSION_NLAYERS,
     FACT_TEXT_BATCH_SIZE, LAST_CHECKPOINT_PATH, LEARNING_RATE, MAX_GRAD_NORM,
     MAX_LENGTH, MIN_LR_RATIO, NHEADS, NLAYERS, NUM_EPOCHS, NUM_WORKERS, RUN_MODE,
@@ -33,9 +34,9 @@ from src.shared.vocabulary import Vocabulary
 
 
 def main() -> None:
-    setup_reproducibility(42)
+    setup_reproducibility(SEED)
     accelerator = Accelerator()
-    log_reproducibility(accelerator, 42)
+    log_reproducibility(accelerator, SEED)
     vocab = Vocabulary.load(VOCAB_PATH)
     train_dataset = RAGFeatureCaptionDataset(
         pd.read_parquet(TRAIN_DF_PATH), vocab, TRAIN_VISUAL_FEATURES_PATH, TRAIN_I2T_PATH,
@@ -48,7 +49,7 @@ def main() -> None:
     train_loader = DataLoader(
         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS,
         pin_memory=True, drop_last=True, collate_fn=collate_fact_batch,
-        worker_init_fn=seed_worker, generator=create_seeded_generator(42),
+        worker_init_fn=seed_worker, generator=create_seeded_generator(SEED),
     )
     val_loader = DataLoader(
         val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS,

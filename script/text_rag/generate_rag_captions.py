@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.shared.checkpoint import load_checkpoint
 from src.shared.config import (
+    SEED,
     BATCH_SIZE,
     BEAM_SIZE,
     BEST_CHECKPOINT_PATH,
@@ -42,9 +43,9 @@ from src.text_rag.models.rag import TextRAGCaptioner
 
 
 def main() -> None:
-    setup_reproducibility(42)
+    setup_reproducibility(SEED)
     accelerator = Accelerator()
-    log_reproducibility(accelerator, 42)
+    log_reproducibility(accelerator, SEED)
 
     test_df = pd.read_parquet(TEST_DF_PATH)
     vocab = Vocabulary.load(VOCAB_PATH)

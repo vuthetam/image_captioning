@@ -350,9 +350,15 @@ accelerate launch script/text_rag/generate_rag_captions.py
 python script/shared/evaluate.py
 ```
 
-Train và generate baseline, image RAG, text RAG và multimodal RAG (cả biến thể `--no-input-image`)
-đều gọi `setup_reproducibility(42)` trong `src/shared/utils.py`.
-Hàm đặt seed bằng `set_seed(42)` và bật chế độ tính toán xác định với
+Tất cả script train và generate (cả biến thể `--no-input-image`) dùng chung `SEED`
+từ config, đọc biến môi trường `SEED` và mặc định `42`. Có thể đặt trong `.env`:
+
+```dotenv
+SEED=42
+```
+
+Các script gọi `setup_reproducibility(SEED)` trong `src/shared/utils.py`.
+Hàm đặt seed bằng `set_seed(SEED)` và bật chế độ tính toán xác định với
 `torch.use_deterministic_algorithms(True)`, `torch.backends.cudnn.benchmark=False`
 và `torch.backends.cudnn.deterministic=True`.
 Hàm tự đặt `CUBLAS_WORKSPACE_CONFIG=:4096:8` trước khi đặt seed. Các script gọi
@@ -360,7 +366,7 @@ hàm trước khi tạo `Accelerator` hoặc thực hiện phép tính CUDA, nê
 biến này thủ công trong notebook Kaggle. Khi khởi động, log ghi
 seed, các cờ xác định, phiên bản PyTorch/CUDA, số process và precision để đối chiếu.
 DataLoader train của các phiên bản này dùng `seed_worker` và generator riêng từ
-`create_seeded_generator(42)`;
+`create_seeded_generator(SEED)`;
 cả hai helper cũng nằm trong `src/shared/utils.py`.
 
 Để kiểm tra tính lặp lại, dùng cùng code, dữ liệu, hyperparameter, phiên bản thư viện,
@@ -704,7 +710,7 @@ Mẫu không có facts báo lỗi; Fact Text RAG cũng báo lỗi nếu context 
 Generate tính memory một lần mỗi batch và truyền cả memory lẫn padding mask
 vào beam search. Dataset/collate vẫn trả tuple.
 
-Trong phần bổ sung này, `src/shared` chỉ giữ ba thành phần lõi dùng cho cả ba
+Trong phần bổ sung này, `src/shared` chỉ giữ ba thành phần lõi dùng cho các
 pipeline facts: `src/shared/facts/dataset.py`, `src/shared/facts/encoder.py` và `src/shared/facts/fusion.py`.
 Mỗi pipeline có engine, inference, decoder và script train/generate riêng.
 Fact Text RAG cũng có caption context encoder và hàm encode caption tokens riêng;
@@ -722,6 +728,72 @@ Kiểm tra tự động dùng dữ liệu nhỏ và CLIP Text nhỏ khởi tạo
 model: mỗi pipeline một batch train/validation/generate, `num_workers=0`.
 Tests kiểm tra cùng nguồn caption/facts, padding mask, gradient, tái sử dụng F,
 cache train–validation và cache mới khi generate, cùng CUDA FP16 nếu có GPU.
+
+### Fact Token RAG: fusion ảnh–facts và memory token của attributes/triplets
+
+Mã nguồn trong `src/fact_token_rag`, scripts trong `script/fact_token_rag`.
+Pipeline kế thừa `FactRAGCaptioner` để dùng trực tiếp fusion và decoder của Fact RAG.
+Dataset fusion, CLIP encoder/cache và collation đầu vào fusion dùng các thành phần
+Fact RAG hiện có; không phụ thuộc `fact_text_rag`. Vòng train/validation nằm riêng
+trong `fact_token_rag.engine_rag` để đọc batch có thêm token facts.
+Không chỉnh sửa mã nguồn `fact_rag` để phục vụ pipeline mới.
+
+```text
+U = fusion patch ảnh với CLIP facts, giống Fact RAG
+T = shared decoder embedding -> positional encoding -> Transformer encoder
+    của token lấy từ attribute_texts và triplet_texts
+memory = concat(U, T)
+```
+
+Cả hai nhánh chọn cùng top K captions theo `TEXT_RAG_CAPTION_SORT_BY`.
+Fusion vẫn lấy cả ba loại facts; nhánh token chỉ dùng attributes và triplets,
+theo thứ tự caption rồi attributes trước triplets. Caption gốc và cột `tokens`
+không làm nội dung memory bổ sung. Dùng contexts **chưa chuẩn hoá aliases**.
+
+Tokenizer đưa về chữ thường để khớp vocabulary decoder, thay `-` bằng khoảng trắng,
+xoá `'` rồi tách whitespace: `man's t-shirt` thành `mans`, `t`, `shirt`.
+Quy tắc này chỉ áp dụng cho nhánh token; chuỗi facts đưa qua CLIP giữ nguyên.
+Facts được loại trùng bằng chuỗi gốc sau trim/gộp whitespace. Facts đã giữ lại
+không lặp ở các caption sau. Nhánh token train cùng decoder, không cache hidden states.
+
+`FACT_CTX_TOKENS_PER_CAPTION` là giới hạn **tổng token facts của từng caption**,
+bao gồm `<eos>` ở cuối mỗi fact. Chỉ thêm fact nguyên vẹn; nếu fact tiếp theo không
+vừa ngân sách caption thì dừng caption đó, tiếp tục sang caption kế tiếp.
+Không cắt giữa triplet. Tổng chiều dài được tính riêng với caption context cũ:
+
+```text
+MAX_FACT_CTX_LENGTH = TOP_K_CAPTIONS * FACT_CTX_TOKENS_PER_CAPTION
+```
+
+Dataset padding tới giới hạn này và trả mask. Nhánh bổ sung rỗng thì mẫu đó chỉ
+dùng `U`; model không đưa hàng all-padding qua token encoder. Batch có cả mẫu
+có/rỗng sẽ mask toàn bộ phần `T` của mẫu rỗng. Nếu cả batch rỗng thì memory chỉ có `U`.
+Quy tắc fusion không có facts vẫn báo lỗi như Fact RAG. Train Accelerate bật
+`find_unused_parameters=True` vì token encoder có thể không được dùng ở một GPU.
+
+Ví dụ `.env`:
+
+```dotenv
+RUN_MODE=fact_token_itm_sort
+RAG_CONTEXTS_SUBDIR=rag_contexts
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_CTX_TOKENS_PER_CAPTION=32
+CTX_NLAYERS=2
+FACT_FUSION_NLAYERS=1
+FACT_TEXT_BATCH_SIZE=128
+```
+
+Mặc định nhánh bổ sung tối đa 128 token, độc lập `MAX_CTX_LENGTH`.
+CLIP Text đóng băng/cache CPU, bỏ CLS, optimizer/scheduler, chuẩn hoá loss theo
+token thật, checkpoint và trường `cocoid` trong predictions theo cơ chế hiện có.
+Chọn `RUN_MODE` riêng và giữ nguyên budget/top K khi generate.
+
+```bash
+accelerate launch script/fact_token_rag/train_rag.py
+accelerate launch script/fact_token_rag/generate_rag_captions.py
+python script/shared/evaluate.py
+```
 
 ## 11. Bổ sung COCO ID vào predictions
 

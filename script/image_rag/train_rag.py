@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.shared.checkpoint import load_checkpoint, save_checkpoint
 from src.shared.scheduler import create_accelerated_warmup_cosine_scheduler, optimizer_steps
 from src.shared.config import (
+    SEED,
     BATCH_SIZE,
     BEST_CHECKPOINT_PATH,
     DMODEL,
@@ -54,9 +55,9 @@ from src.shared.vocabulary import Vocabulary
 
 
 def main() -> None:
-    setup_reproducibility(42)
+    setup_reproducibility(SEED)
     accelerator = Accelerator()
-    log_reproducibility(accelerator, 42)
+    log_reproducibility(accelerator, SEED)
 
     train_df = pd.read_parquet(TRAIN_DF_PATH)
     val_df = pd.read_parquet(VAL_DF_PATH)
@@ -85,7 +86,7 @@ def main() -> None:
         top_k=TOP_K_RAG_IMAGES
     )
 
-    train_generator = create_seeded_generator(42)
+    train_generator = create_seeded_generator(SEED)
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,

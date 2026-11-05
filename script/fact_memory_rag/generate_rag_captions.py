@@ -17,6 +17,7 @@ from src.fact_memory_rag.inference_rag import generate_captions
 from src.fact_memory_rag.models import FactMemoryRAGCaptioner
 from src.shared.checkpoint import load_checkpoint
 from src.shared.config import (
+    SEED,
     BATCH_SIZE, BEAM_SIZE, BEST_CHECKPOINT_PATH, DMODEL, DROPOUT, FACT_FUSION_NLAYERS,
     FACT_TEXT_BATCH_SIZE, MAX_LENGTH, NHEADS, NLAYERS, NUM_WORKERS, PREDICTIONS_PATH,
     RUN_MODE, TEST_DF_PATH, TEST_I2T_PATH, TEST_VISUAL_FEATURES_PATH,
@@ -27,9 +28,9 @@ from src.shared.vocabulary import Vocabulary
 
 
 def main() -> None:
-    setup_reproducibility(42)
+    setup_reproducibility(SEED)
     accelerator = Accelerator()
-    log_reproducibility(accelerator, 42)
+    log_reproducibility(accelerator, SEED)
     vocab = Vocabulary.load(VOCAB_PATH)
     test_df = pd.read_parquet(TEST_DF_PATH)
     dataset = RAGFeatureDataset(
