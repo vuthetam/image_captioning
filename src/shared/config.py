@@ -142,7 +142,7 @@ TEST_I2I_PATH = RAG_CONTEXTS_DIR / "test_i2i.parquet"
 # ==========================================
 # 6. EXPERIMENT OUTPUTS & CHECKPOINTS
 # ==========================================
-RESULT_DIR = ARTIFACTS_DIR / "results" / RUN_MODE
+RESULT_DIR = ARTIFACTS_DIR / "results" / f"seed_{SEED}" / RUN_MODE
 safe_mkdir(RESULT_DIR)
 PREDICTIONS_PATH = RESULT_DIR / "predictions.json"
 METRICS_PATH = RESULT_DIR / "metrics.json"

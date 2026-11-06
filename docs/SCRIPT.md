@@ -2,15 +2,15 @@
 
 Chạy các lệnh từ thư mục gốc của project. Cần có dataset MS COCO và cấu hình đường dẫn trong `.env` hoặc dùng giá trị mặc định trong `src/shared/config.py`.
 
-Tên script sinh caption thống nhất theo dạng `generate_<loại>_captions.py`:
+Tên script sinh caption thống nhất là `generate_captions.py` trong thư mục của từng pipeline:
 
 | Phiên bản | Script |
 | --- | --- |
-| Baseline | `script/baseline/generate_baseline_captions.py` |
-| Image RAG | `script/image_rag/generate_rag_captions.py` |
-| Text RAG | `script/text_rag/generate_rag_captions.py` |
-| Multimodal RAG | `script/multimodal_rag/generate_rag_captions.py` |
-| Fact RAG | `script/fact_rag/generate_rag_captions.py` |
+| Baseline | `script/baseline/generate_captions.py` |
+| Image RAG | `script/image_rag/generate_captions.py` |
+| Text RAG | `script/text_rag/generate_captions.py` |
+| Multimodal RAG | `script/multimodal_rag/generate_captions.py` |
+| Fact RAG | `script/fact_rag/generate_captions.py` |
 
 Mã nguồn và script V1–V4 đã được loại bỏ. Baseline được tách riêng trong
 `src/baseline` và `script/baseline`. Baseline, image RAG, text RAG và multimodal RAG vẫn dùng
@@ -345,8 +345,8 @@ theo tổng số target token hợp lệ trên tất cả process trước khi b
 không dùng chung với các phiên bản trước, rồi chạy:
 
 ```bash
-accelerate launch script/text_rag/train_rag.py
-accelerate launch script/text_rag/generate_rag_captions.py
+accelerate launch script/text_rag/train.py
+accelerate launch script/text_rag/generate_captions.py
 python script/shared/evaluate.py
 ```
 
@@ -424,8 +424,8 @@ Padding mask chỉ che các vị trí padding của caption context. Mặc đị
 Đặt `RUN_MODE=multimodal_rag_l14` trong `.env`, rồi chạy:
 
 ```bash
-accelerate launch script/multimodal_rag/train_rag.py
-accelerate launch script/multimodal_rag/generate_rag_captions.py
+accelerate launch script/multimodal_rag/train.py
+accelerate launch script/multimodal_rag/generate_captions.py
 python script/shared/evaluate.py
 ```
 
@@ -456,8 +456,8 @@ vào memory của decoder:
 checkpoint và kết quả riêng, rồi dùng cùng tùy chọn cho train và generate:
 
 ```bash
-accelerate launch script/multimodal_rag/train_rag.py --no-input-image
-accelerate launch script/multimodal_rag/generate_rag_captions.py --no-input-image
+accelerate launch script/multimodal_rag/train.py --no-input-image
+accelerate launch script/multimodal_rag/generate_captions.py --no-input-image
 python script/shared/evaluate.py
 ```
 
@@ -478,7 +478,7 @@ Ví dụ baseline, đặt `RUN_MODE=baseline` trong `.env`, rồi chạy:
 
 ```bash
 accelerate launch script/baseline/train.py
-accelerate launch script/baseline/generate_baseline_captions.py
+accelerate launch script/baseline/generate_captions.py
 ```
 
 Baseline giữ nguyên kiến trúc và định dạng state dict của V4 baseline cũ. Để tiếp tục
@@ -612,8 +612,8 @@ dùng cho CLIP Text. Giữ cùng model, vocabulary, sort, top K và kiến trúc
 Checkpoint/kết quả vẫn được tách theo `RUN_MODE` như các pipeline khác.
 
 ```bash
-accelerate launch script/fact_rag/train_rag.py
-accelerate launch script/fact_rag/generate_rag_captions.py
+accelerate launch script/fact_rag/train.py
+accelerate launch script/fact_rag/generate_captions.py
 python script/shared/evaluate.py
 ```
 
@@ -668,8 +668,8 @@ CTX_NLAYERS=2
 hoặc có thể đặt tường minh như Text RAG.
 
 ```bash
-accelerate launch script/fact_text_rag/train_rag.py
-accelerate launch script/fact_text_rag/generate_rag_captions.py
+accelerate launch script/fact_text_rag/train.py
+accelerate launch script/fact_text_rag/generate_captions.py
 python script/shared/evaluate.py
 ```
 
@@ -698,8 +698,8 @@ FACT_TEXT_BATCH_SIZE=128
 ```
 
 ```bash
-accelerate launch script/fact_memory_rag/train_rag.py
-accelerate launch script/fact_memory_rag/generate_rag_captions.py
+accelerate launch script/fact_memory_rag/train.py
+accelerate launch script/fact_memory_rag/generate_captions.py
 python script/shared/evaluate.py
 ```
 
@@ -784,20 +784,45 @@ FACT_FUSION_NLAYERS=1
 FACT_TEXT_BATCH_SIZE=128
 ```
 
-Mặc định nhánh bổ sung tối đa 128 token, độc lập `MAX_CTX_LENGTH`.
+Với cấu hình ví dụ, nhánh bổ sung tối đa 128 token, độc lập `MAX_CTX_LENGTH`.
 CLIP Text đóng băng/cache CPU, bỏ CLS, optimizer/scheduler, chuẩn hoá loss theo
 token thật, checkpoint và trường `cocoid` trong predictions theo cơ chế hiện có.
 Chọn `RUN_MODE` riêng và giữ nguyên budget/top K khi generate.
 
 ```bash
-accelerate launch script/fact_token_rag/train_rag.py
-accelerate launch script/fact_token_rag/generate_rag_captions.py
+accelerate launch script/fact_token_rag/train.py
+accelerate launch script/fact_token_rag/generate_captions.py
+python script/shared/evaluate.py
+```
+
+### Fact Attribute RAG: fusion ảnh–facts và memory token của attributes
+
+Pipeline này giữ fusion giống Fact Token RAG: ảnh fusion với cả `object_texts`,
+`attribute_texts` và `triplet_texts`. Memory bổ sung chỉ dùng token từ
+`attribute_texts`; các caption được sort và chọn top K theo cùng cấu hình.
+
+Pipeline dùng lại model, tokenizer, quy tắc padding, train/validation và inference
+của Fact Token RAG. Khi ảnh không có attributes, decoder chỉ dùng fused memory.
+Thanh tiến trình dùng nhãn `Fact Token RAG` của engine được tái sử dụng.
+Đặt `RUN_MODE` riêng để tạo checkpoint và kết quả riêng:
+
+```dotenv
+RUN_MODE=fact_attribute_itm_sort
+RAG_CONTEXTS_SUBDIR=rag_contexts
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_CTX_TOKENS_PER_CAPTION=32
+```
+
+```bash
+accelerate launch script/fact_attribute_rag/train.py
+accelerate launch script/fact_attribute_rag/generate_captions.py
 python script/shared/evaluate.py
 ```
 
 ## 11. Bổ sung COCO ID vào predictions
 
-Các script generate của baseline, image/text/multimodal RAG và ba pipeline facts
+Các script generate của baseline, image/text/multimodal RAG và các pipeline facts
 ghi trực tiếp `imgid`, `cocoid`, `caption` vào `predictions.json`. `cocoid` lấy từ
 test split; evaluator captioning hiện tại vẫn dùng `imgid`. Script dưới đây dùng
 để bổ sung `cocoid` cho các file kết quả cũ.
