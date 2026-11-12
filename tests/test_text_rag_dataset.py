@@ -9,9 +9,9 @@ import pandas as pd
 
 from src.shared.vocabulary import Vocabulary
 from src.shared.dataset import load_rag_caption_lookup
-from src.multimodal_rag.dataset import RAGFeatureDataset as MultimodalFeatureDataset
-from src.multimodal_rag.dataset import RAGFeatureCaptionDataset as MultimodalTrainingDataset
-from src.text_rag.dataset import (
+from src.multimodal.dataset import RAGFeatureDataset as MultimodalFeatureDataset
+from src.multimodal.dataset import RAGFeatureCaptionDataset as MultimodalTrainingDataset
+from src.text.dataset import (
     RAGFeatureCaptionDataset,
     RAGFeatureDataset,
     encode_rag_context,

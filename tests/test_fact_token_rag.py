@@ -15,9 +15,9 @@ import pandas as pd
 import pyarrow.parquet as pq
 import torch
 
-from src.fact_rag.models import FactRAGCaptioner
-from src.fact_token_rag.dataset import RAGFeatureDataset, encode_fact_context, load_fact_token_context_lookup, tokenize_fact
-from src.fact_token_rag.models import FactTokenRAGCaptioner
+from src.fact.models import FactRAGCaptioner
+from src.fact_token.dataset import RAGFeatureDataset, encode_fact_context, load_fact_token_context_lookup, tokenize_fact
+from src.fact_token.models import FactTokenRAGCaptioner
 from src.shared.facts.encoder import CachedCLIPFactEncoder
 from src.shared.inference import beam_search
 from src.shared.utils import setup_reproducibility
@@ -183,8 +183,8 @@ class FactTokenScriptTests(unittest.TestCase):
                 self.run_pipeline(empty)
 
     def run_pipeline(self, empty):
-        train = importlib.import_module("script.fact_token_rag.train_rag")
-        generate = importlib.import_module("script.fact_token_rag.generate_rag_captions")
+        train = importlib.import_module("script.fact_token_rag.train")
+        generate = importlib.import_module("script.fact_token_rag.generate_captions")
         accelerator, text_model, tokenizer = Accelerator(cpu=True), tiny_clip(), TinyTokenizer()
         initial_text, encoders = copy.deepcopy(text_model.state_dict()), []
 

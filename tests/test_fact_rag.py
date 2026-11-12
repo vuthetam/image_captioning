@@ -17,7 +17,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection
 
 from src.shared.facts.dataset import load_rag_fact_lookup, RAGFeatureDataset, collate_fact_batch
 from src.shared.facts.encoder import CachedCLIPFactEncoder
-from src.fact_rag.models import FactRAGCaptioner
+from src.fact.models import FactRAGCaptioner
 from src.shared.vocabulary import Vocabulary
 from src.shared.inference import beam_search
 from src.shared.utils import setup_reproducibility
@@ -237,8 +237,8 @@ class FusionTests(unittest.TestCase):
 
 class FactScriptTests(unittest.TestCase):
     def test_train_val_and_generate_each_use_one_batch_with_zero_workers(self):
-        train = importlib.import_module("script.fact_rag.train_rag")
-        generate = importlib.import_module("script.fact_rag.generate_rag_captions")
+        train = importlib.import_module("script.fact_rag.train")
+        generate = importlib.import_module("script.fact_rag.generate_captions")
         accelerator = Accelerator(cpu=True)
         text_model, tokenizer = tiny_clip(), TinyTokenizer()
         initial_text = copy.deepcopy(text_model.state_dict())

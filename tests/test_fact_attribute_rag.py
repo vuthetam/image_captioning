@@ -13,8 +13,8 @@ import h5py
 import pandas as pd
 import torch
 
-from src.fact_attribute_rag.dataset import RAGFeatureDataset, load_attribute_context_lookup
-from src.fact_token_rag.dataset import RAGFeatureDataset as FactTokenDataset
+from src.fact_attribute.dataset import RAGFeatureDataset, load_attribute_context_lookup
+from src.fact_token.dataset import RAGFeatureDataset as FactTokenDataset
 from src.shared.facts.encoder import CachedCLIPFactEncoder
 from test_fact_rag import TinyTokenizer, close_loader_stores, tiny_clip, write_context
 from test_fact_token_rag import vocabulary
@@ -61,8 +61,8 @@ class FactAttributeTests(unittest.TestCase):
                         instance.feature_store._h5_file = None
 
     def test_one_batch_train_val_generate_with_mixed_and_empty_attributes(self):
-        train = importlib.import_module("script.fact_attribute_rag.train_rag")
-        generate = importlib.import_module("script.fact_attribute_rag.generate_rag_captions")
+        train = importlib.import_module("script.fact_attribute_rag.train")
+        generate = importlib.import_module("script.fact_attribute_rag.generate_captions")
         for empty in (False, True):
             with self.subTest(empty=empty), tempfile.TemporaryDirectory() as directory, ExitStack() as cleanup:
                 accelerator = Accelerator(cpu=True)

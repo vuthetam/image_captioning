@@ -16,9 +16,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 
-from src.fact_memory_rag.models import FactMemoryRAGCaptioner
-from src.fact_text_rag.dataset import RAGFeatureDataset, load_caption_context_lookup
-from src.fact_text_rag.models import FactTextRAGCaptioner
+from src.fact_memory.models import FactMemoryRAGCaptioner
+from src.fact_text.dataset import RAGFeatureDataset, load_caption_context_lookup
+from src.fact_text.models import FactTextRAGCaptioner
 from src.shared.facts.dataset import load_rag_fact_lookup
 from src.shared.facts.encoder import CachedCLIPFactEncoder
 from src.shared.inference import beam_search

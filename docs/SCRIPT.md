@@ -621,6 +621,12 @@ Train dùng teacher forcing; generate gọi `encode_memory()` một lần cho m�
 beam search bằng decoder dùng chung. Optimizer, warmup/cosine, checkpoint và chuẩn hóa
 loss theo tổng số token hợp lệ trên các process dùng cùng cơ chế của các pipeline hiện có.
 
+Causal mask và target padding mask trong decoder shared dùng boolean: `True` là
+vị trí bị che. Fact RAG, Fact Token, Fact Attribute và Fact Fusion Fact Bias cùng
+dùng quy ước này. Việc chuẩn hóa từ mask float không đổi tên/kích thước trọng số,
+nên checkpoint cũ vẫn load được. Để tái lập đúng số liệu cũ, lưu phiên bản code
+đã dùng; sai số số học nhỏ vẫn có thể xuất hiện khi đổi cách biểu diễn mask.
+
 ## 10. Fact RAG với memory bổ sung cho decoder
 
 Hai pipeline mới giữ bước fusion của Fact RAG và ghép thêm một nguồn memory
@@ -819,6 +825,65 @@ accelerate launch script/fact_attribute_rag/train.py
 accelerate launch script/fact_attribute_rag/generate_captions.py
 python script/shared/evaluate.py
 ```
+
+### Fact Fusion Fact Bias: fusion ảnh–facts và bias logits theo fact
+
+Mã nguồn trong `src/fact_fusion_fact_bias`, scripts trong
+`script/fact_fusion_fact_bias`. Pipeline dùng nguyên dataset, CLIP encoder/cache
+và fusion hiện có. Chọn captions bằng `TEXT_RAG_CAPTION_SORT_BY` và
+`TOP_K_CAPTIONS`, rồi lấy đủ objects, attributes, triplets. Dùng context chưa
+chuẩn hóa aliases. Decoder chỉ nhận fused memory, không concatenate memory bổ sung.
+
+Ở mỗi timestep, dùng hidden state cuối decoder và vector fact sau projector:
+
+```text
+gate(t, j) = sigmoid(MLP([h_t; F_j]))
+bias(t, w) = max gate(t, j) của các facts chứa token ID w; ngoài facts bằng 0
+alpha = softplus(raw_alpha), khởi tạo alpha = 0.1
+adjusted_logits = vocabulary_projection(h_t) + alpha * bias
+```
+
+MLP là `Linear(2D, D) → ReLU → Linear(D, 1) → Sigmoid`, dùng chung cho mọi
+fact/timestep. `F` được tái sử dụng trực tiếp từ fusion. Gate và alpha train
+bằng caption cross-entropy trên adjusted logits; bias cũng được áp dụng trước
+`log_softmax` khi beam search. Giá trị alpha được in sau mỗi epoch và lưu trong
+checkpoint cùng gate. Không cần thêm biến config cho kiến trúc bias mặc định này.
+
+Model trong `src/fact_fusion_fact_bias/model.py` cung cấp `encode_memory()` trả
+fused memory, projected facts và fact padding mask. `forward()` và inference
+cùng dùng hàm này; generate tính một lần mỗi batch rồi tái sử dụng khi beam search.
+
+Tokenize cho ánh xạ bias tách biệt với CLIP: chữ thường, thay `-` bằng khoảng
+trắng, xóa `'`/`’`, tách dấu câu, giữ từ có trong vocabulary decoder và loại
+mọi special token/OOV. Dedup token IDs trong mỗi fact; không thêm SOS/EOS,
+không áp dụng ngân sách concatenate tokens. Toàn bộ token bị lọc thì bias ảnh
+đó bằng 0; không có fusion fact vẫn báo lỗi như Fact RAG.
+
+Chọn `RUN_MODE` riêng trong `.env` trước khi chạy để tách checkpoint và kết quả
+khỏi các pipeline cũ. Ví dụ:
+
+```dotenv
+RUN_MODE=fact_fusion_fact_bias_itm
+SEED=42
+RAG_CONTEXTS_SUBDIR=rag_contexts
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_FUSION_NLAYERS=1
+FACT_TEXT_BATCH_SIZE=128
+```
+
+```bash
+accelerate launch script/fact_fusion_fact_bias/train.py
+accelerate launch script/fact_fusion_fact_bias/generate_captions.py
+python script/shared/evaluate.py
+```
+
+Giữ cùng vocabulary, CLIP model, sort, top-k và kiến trúc giữa train/generate.
+Scripts dùng seed, optimizer/scheduler, chuẩn hóa loss, checkpoint và JSON
+predictions có `imgid`, `cocoid`, `caption` theo cơ chế hiện có. Cờ
+`include_cls_token` được giữ ở model/engine/inference, scripts mặc định bỏ CLS.
+Thiết kế đầy đủ và biến thể token bias dự kiến được ghi trong
+`docs/FACT_LOGIT_BIAS_PLAN.md`.
 
 ## 11. Bổ sung COCO ID vào predictions
 

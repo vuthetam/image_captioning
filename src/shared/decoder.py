@@ -46,7 +46,7 @@ class TransformerCaptionDecoder(nn.Module):
 
     def _generate_square_subsequent_mask(self, size: int, device: torch.device) -> Tensor:
         return torch.triu(
-            torch.full((size, size), float("-inf"), device=device),
+            torch.ones(size, size, dtype=torch.bool, device=device),
             diagonal=1,
         )
 
@@ -63,10 +63,7 @@ class TransformerCaptionDecoder(nn.Module):
         tgt_mask = self._generate_square_subsequent_mask(x.size(1), x.device)
         tgt_key_padding_mask = None
         if attention_mask is not None:
-            # Chuyển sang float additive mask (-inf) để đồng kiểu với tgt_mask
-            bool_mask = (attention_mask == 0)
-            tgt_key_padding_mask = torch.zeros_like(attention_mask, dtype=torch.float)
-            tgt_key_padding_mask = tgt_key_padding_mask.masked_fill(bool_mask, float("-inf"))
+            tgt_key_padding_mask = attention_mask == 0
 
         out = self.decoder(
             tgt=x,

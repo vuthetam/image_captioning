@@ -1,0 +1,2 @@
+from src.multimodal.models.rag import MultimodalRAGCaptioner
+from src.multimodal.models.rag_no_input_image import MultimodalRAGCaptionerNoInputImage
