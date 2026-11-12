@@ -2,7 +2,7 @@
 
 Ngày ghi nhận: 12/11/2026.
 
-Trạng thái: người dùng đã yêu cầu triển khai biến thể theo fact trước. Mã nguồn hiện nằm trong `src/fact_fusion_fact_bias`, scripts trong `script/fact_fusion_fact_bias`. Biến thể theo token chưa được triển khai. Kết quả kiểm tra xem mục 12.
+Trạng thái: đã triển khai cả `fact_fusion_fact_bias` và `fact_fusion_token_bias`, với mã nguồn và scripts trong thư mục riêng tương ứng dưới `src` và `script`. Kết quả kiểm tra xem mục 12 và 13.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -97,6 +97,9 @@ b_t(w) = g_t(w) nếu w là ứng viên; ngược lại bằng 0
 - Một MLP dùng chung cho tất cả token ứng viên và timesteps trong mô hình này.
 - Dedup token IDs trên toàn bộ facts của một ảnh, giữ thứ tự gặp đầu tiên. Mỗi token ứng viên chỉ tính gate một lần mỗi timestep.
 - Nhánh fusion vẫn dùng CLIP Text và cache như Fact RAG. Chỉ nhánh tính token bias dùng embedding decoder.
+- Candidate IDs và mask được tạo bởi `src/fact_fusion_token_bias/tokenizer.py`. Hàm tách từ `tokenize_fact()` được import trực tiếp từ tokenizer của fact bias để giữ cùng quy tắc; việc dedup toàn ảnh nằm riêng trong pipeline token bias.
+- `TokenBiasCaptionDecoder` dùng MLP `Linear(2D, D) → ReLU → Linear(D, 1) → Sigmoid` và `initial_alpha=0.1` như fact bias. Lớp Linear đầu cũng được tính bằng hai phép chiếu tương đương concatenate; embedding token tra trực tiếp từ `self.embedding`.
+- Candidate IDs hợp lệ là duy nhất trong mỗi ảnh, nên gate được ghi trực tiếp vào vị trí vocabulary bằng `scatter`, không cần reduce `max` giữa các facts.
 
 Shape logic: candidate IDs `[B, U]`, candidate embeddings `[B, U, D]`, gate `[B, T, U]`, với `U` là số ứng viên tối đa trong batch. Mask các slot padding trước khi ghi vào bias.
 
@@ -198,3 +201,15 @@ MLP mặc định đã dùng cho biến thể theo fact: `Linear(2D, D) → ReLU
 - Chưa train/generate trên toàn bộ dữ liệu và chưa chạy nhiều GPU thực tế. Hướng dẫn sử dụng nằm trong `docs/SCRIPT.md`.
 - Kiểm tra riêng trước/sau chuẩn hóa mask trên cùng trọng số: shared decoder và fact bias decoder load state dict cũ với `strict=True`, beam search cho cùng chuỗi token, backward hữu hạn trên CPU FP32, CUDA FP32 và CUDA FP16. Sai khác logits tối đa khoảng `2.4e-7` ở FP32 và `0` ở CUDA FP16 trong batch thử; đây không phải đánh giá lại metrics trên toàn bộ test set.
 - Sau chuẩn hóa, 24 tests của Fact RAG, Fact Token, Fact Attribute và Fact Fusion Fact Bias đều qua, gồm smoke tests train/validation/generate một batch với `num_workers=0` và các kiểm tra CUDA FP16. Đã sửa import tên script cũ trong ba bộ tests cho khớp `train.py`/`generate_captions.py`, cùng assertion checkpoint cho tên `fact_gate_mlp` hiện tại.
+
+## 13. Trạng thái triển khai biến thể theo token
+
+- Mã nguồn trong `src/fact_fusion_token_bias`: `model.py`, `decoder.py`, `tokenizer.py`, `engine_rag.py`, `inference_rag.py`. Scripts là `script/fact_fusion_token_bias/train.py` và `generate_captions.py`.
+- Dùng nguyên shared dataset/collate, CLIP encoder/cache và `FactFusionEncoder`. Cả fusion và token bias lấy từ cùng danh sách đầy đủ objects/attributes/triplets sau sort/top-k/dedup facts.
+- `encode_memory()` trả fused memory dạng Tensor như Fact RAG. Projected CLIP facts chỉ dùng trong fusion; gate token nhận hidden states và raw token embeddings của decoder. Chỉ có một bảng embedding decoder trong model/checkpoint.
+- Tokenizer dedup IDs trên toàn bộ facts của từng ảnh, không áp dụng token budget. Mẫu toàn OOV giữ một slot padding có mask False, bias bằng 0; gate vẫn nằm trong autograd với gradient 0 để tránh nhánh bị bỏ hẳn trong forward.
+- Train giữ teacher forcing, chuẩn hóa loss theo token thật, optimizer/scheduler/checkpoint như fact bias. Alpha mặc định 0.1 và tự học; script không cần truyền giá trị mặc định. Khi generate, candidate IDs/mask được expand theo beam trong `_TokenBiasBeamDecoder` và bias được tính cho timestep cuối.
+- Đã chạy `python -m unittest discover -s tests -p test_fact_fusion_token_bias.py -v`: 9 tests đều qua. Kiểm tra dedup toàn ảnh, special/OOV/padding, gate và gradient khớp MLP concatenate tham chiếu, gradient qua chính embedding decoder, fusion và logits khi tắt bias khớp Fact RAG, alpha mặc định/ghi đè, beam routing và CUDA FP16.
+- Smoke test scripts train/validation/generate đúng một batch với `num_workers=0`, CLIP nhỏ khởi tạo tại chỗ. Kiểm tra cache train–validation, cache mới khi generate, checkpoint có gate/alpha và predictions có `imgid`, `cocoid`, `caption`.
+- Chưa chạy toàn bộ dữ liệu, chưa kiểm thử nhiều GPU thực tế và chưa benchmark tốc độ. Hạn chế tính val loss khi Accelerate lặp mẫu ở batch cuối nhiều GPU vẫn giống các pipeline hiện có.
+- Lần triển khai token bias không sửa source của pipeline fact bias hoặc các thành phần shared.

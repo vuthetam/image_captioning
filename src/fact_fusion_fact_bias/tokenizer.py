@@ -1,19 +1,12 @@
 """Map fusion facts to decoder vocabulary IDs without changing CLIP inputs."""
 
-import re
 from typing import Sequence
 
 import torch
 from torch import Tensor
 
+from src.shared.facts.tokenizer import tokenize_fact
 from src.shared.vocabulary import Vocabulary
-
-
-def tokenize_fact(text: str) -> list[str]:
-    """Split hyphens/punctuation and remove straight or curly apostrophes."""
-    normalized = text.lower().replace("-", " ").replace("'", "").replace("’", "")
-    # Preserve special-token strings so the vocabulary filter can reject them.
-    return re.findall(r"<[^>\s]+>|\w+", normalized)
 
 
 def encode_fact_token_ids(

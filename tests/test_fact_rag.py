@@ -17,7 +17,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection
 
 from src.shared.facts.dataset import load_rag_fact_lookup, RAGFeatureDataset, collate_fact_batch
 from src.shared.facts.encoder import CachedCLIPFactEncoder
-from src.fact.models import FactRAGCaptioner
+from src.fact_fusion.models import FactRAGCaptioner
 from src.shared.vocabulary import Vocabulary
 from src.shared.inference import beam_search
 from src.shared.utils import setup_reproducibility

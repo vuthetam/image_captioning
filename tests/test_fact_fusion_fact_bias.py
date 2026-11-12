@@ -17,9 +17,10 @@ import torch
 
 from src.fact_fusion_fact_bias.inference_rag import _FactBiasBeamDecoder
 from src.fact_fusion_fact_bias.model import FactFusionFactBiasCaptioner
-from src.fact_fusion_fact_bias.tokenizer import encode_fact_token_ids, tokenize_fact
-from src.fact.models import FactRAGCaptioner
+from src.fact_fusion_fact_bias.tokenizer import encode_fact_token_ids
+from src.fact_fusion.models import FactRAGCaptioner
 from src.shared.facts.encoder import CachedCLIPFactEncoder
+from src.shared.facts.tokenizer import tokenize_fact
 from src.shared.inference import beam_search
 from src.shared.utils import setup_reproducibility
 from src.shared.vocabulary import Vocabulary

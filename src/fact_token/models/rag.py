@@ -3,7 +3,7 @@ import math
 import torch
 from torch import Tensor, nn
 
-from src.fact.models import FactRAGCaptioner
+from src.fact_fusion.models import FactRAGCaptioner
 from src.shared.decoder import PositionalEncoding
 
 

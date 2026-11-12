@@ -15,7 +15,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import torch
 
-from src.fact.models import FactRAGCaptioner
+from src.fact_fusion.models import FactRAGCaptioner
 from src.fact_token.dataset import RAGFeatureDataset, encode_fact_context, load_fact_token_context_lookup, tokenize_fact
 from src.fact_token.models import FactTokenRAGCaptioner
 from src.shared.facts.encoder import CachedCLIPFactEncoder

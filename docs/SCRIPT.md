@@ -882,8 +882,62 @@ Giữ cùng vocabulary, CLIP model, sort, top-k và kiến trúc giữa train/ge
 Scripts dùng seed, optimizer/scheduler, chuẩn hóa loss, checkpoint và JSON
 predictions có `imgid`, `cocoid`, `caption` theo cơ chế hiện có. Cờ
 `include_cls_token` được giữ ở model/engine/inference, scripts mặc định bỏ CLS.
-Thiết kế đầy đủ và biến thể token bias dự kiến được ghi trong
+Thiết kế đầy đủ của hai biến thể bias được ghi trong
 `docs/FACT_LOGIT_BIAS_PLAN.md`.
+
+### Fact Fusion Token Bias: fusion ảnh–facts và bias logits theo token
+
+Mã nguồn trong `src/fact_fusion_token_bias`, scripts trong
+`script/fact_fusion_token_bias`. Dùng nguyên nguồn facts, sort CLIP/ITM, top-k,
+CLIP Text đóng băng/cache CPU và fusion như Fact RAG/Fact Fusion Fact Bias.
+Lấy đủ `object_texts`, `attribute_texts`, `triplet_texts`; không dùng aliases
+cho thí nghiệm này. Decoder chỉ nhận fused memory, không concatenate memory bổ sung.
+
+Nhánh bias tokenize cùng quy tắc đã chốt, gom tất cả token IDs hợp lệ rồi
+dedup trên toàn bộ facts của từng ảnh, giữ lần xuất hiện đầu. Không thêm
+SOS/EOS, không giới hạn token budget và không giữ token OOV/special.
+
+```text
+E(w) = decoder.embedding(w), trước positional encoding và sqrt(d_model)
+gate(t, w) = sigmoid(MLP([h_t; E(w)]))
+bias(t, w) = gate(t, w) nếu w là ứng viên; ngoài tập ứng viên bằng 0
+alpha = softplus(raw_alpha), mặc định khởi tạo 0.1
+adjusted_logits = vocabulary_projection(h_t) + alpha * bias
+```
+
+MLP và alpha học cùng captioner bằng cross-entropy trên adjusted logits.
+Embedding dùng chung với đầu vào decoder, không có bảng embedding riêng và
+không cache vector embedding đang train. CLIP vẫn chạy để phục vụ nhánh fusion.
+Mẫu không có token hợp lệ sau lọc vocabulary dùng bias 0; không có fact cho
+fusion vẫn báo lỗi. Mask padding và causal mask đều dùng boolean.
+
+`model.py` cung cấp `encode_memory()` trả fused memory như Fact RAG.
+Generate tính memory và candidate IDs/mask một lần mỗi batch, rồi dùng
+`_TokenBiasBeamDecoder` với beam search chung. Bias được cộng trước
+`log_softmax`; chỉ tính gate/logits cho timestep cuối khi sinh caption.
+
+Đặt `RUN_MODE` riêng trong `.env`, ví dụ:
+
+```dotenv
+RUN_MODE=fact_fusion_token_bias_itm
+SEED=42
+RAG_CONTEXTS_SUBDIR=rag_contexts
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_FUSION_NLAYERS=1
+FACT_TEXT_BATCH_SIZE=128
+```
+
+```bash
+accelerate launch script/fact_fusion_token_bias/train.py
+accelerate launch script/fact_fusion_token_bias/generate_captions.py
+python script/shared/evaluate.py
+```
+
+Các cấu hình vocabulary, CLIP model, sort/top-k, seed và kiến trúc cần thống nhất
+giữa train/generate. Không cần thêm biến env cho alpha mặc định; muốn đổi giá trị
+khởi tạo có thể truyền `initial_alpha` khi tạo model. Epoch checkpoint và alpha
+được in khi generate; predictions lưu `imgid`, `cocoid`, `caption` như các pipeline khác.
 
 ## 11. Bổ sung COCO ID vào predictions
 

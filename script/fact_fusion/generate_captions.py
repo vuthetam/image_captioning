@@ -14,8 +14,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.shared.facts.dataset import RAGFeatureDataset, collate_fact_batch
 from src.shared.facts.encoder import CachedCLIPFactEncoder
-from src.fact.inference_rag import generate_captions
-from src.fact.models import FactRAGCaptioner
+from src.fact_fusion.inference_rag import generate_captions
+from src.fact_fusion.models import FactRAGCaptioner
 from src.shared.checkpoint import load_checkpoint
 from src.shared.config import (
     SEED,
