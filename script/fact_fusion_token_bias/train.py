@@ -64,7 +64,8 @@ def main() -> None:
         vocab_size=len(vocab), d_model=DMODEL, nheads=NHEADS, nlayers=NLAYERS,
         dropout=DROPOUT, max_length=MAX_LENGTH, pad_idx=vocab.pad_idx(),
         visual_feature_dim=train_dataset.feature_shape[-1],
-        fact_feature_dim=fact_encoder.output_dim, fusion_layers=FACT_FUSION_NLAYERS,
+        fact_feature_dim=fact_encoder.output_dim, fusion_layers=FACT_FUSION_NLAYERS, 
+        initial_alpha=0.3
     )
     optimizer = torch.optim.AdamW(trainable_parameters(model), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     train_loader, val_loader = accelerator.prepare(train_loader, val_loader)
