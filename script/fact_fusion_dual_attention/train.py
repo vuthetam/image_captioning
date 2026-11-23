@@ -88,7 +88,8 @@ def main() -> None:
         f"cache=lazy CPU RAM per process; feature shape={train_dataset.feature_shape}; "
         f"train rows={len(train_dataset):,}; val rows={len(val_dataset):,}; "
         f"batch/GPU={BATCH_SIZE}; global batch={BATCH_SIZE * accelerator.num_processes}; "
-        f"trainable params={sum(p.numel() for p in trainable_parameters(model)):,}"
+        f"captioner total params={sum(p.numel() for p in model.parameters()):,}; "
+        f"learnable params={sum(p.numel() for p in trainable_parameters(model)):,}"
     )
     for epoch in range(start_epoch, NUM_EPOCHS):
         train_loss = train_one_epoch(

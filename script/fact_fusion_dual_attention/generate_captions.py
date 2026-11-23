@@ -56,7 +56,9 @@ def main() -> None:
     accelerator.print(
         f"Fact Fusion Dual Attention; run mode={RUN_MODE}; epoch={epoch}; CLIP Text={VISUAL_ENCODER_MODEL}; "
         f"sort={TEXT_RAG_CAPTION_SORT_BY}; top K captions={TOP_K_CAPTIONS}; "
-        f"fusion layers={FACT_FUSION_NLAYERS}; cache=lazy CPU RAM per process"
+        f"fusion layers={FACT_FUSION_NLAYERS}; cache=lazy CPU RAM per process; "
+        f"captioner total params={sum(p.numel() for p in model.parameters()):,}; "
+        f"learnable params={sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
     )
     model, loader = accelerator.prepare(model, loader)
     captions = generate_captions(
