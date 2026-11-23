@@ -18,8 +18,9 @@ def normalize_fact(text: str) -> str:
     return " ".join(text.split())
 
 
-def load_rag_fact_lookup(context_path: str | Path, top_k: int, caption_sort_by: str = "itm"):
-    """Sort captions, select top K, then gather and deduplicate their facts."""
+def load_rag_fact_lookup(context_path: str | Path, top_k: int, caption_sort_by: str = "itm",
+                         return_indices: bool = False):
+    """Gather deduplicated facts, optionally returning their indices by source column."""
     if top_k < 1:
         raise ValueError("top_k must be positive.")
     if caption_sort_by not in {"clip", "itm"}:
@@ -32,6 +33,7 @@ def load_rag_fact_lookup(context_path: str | Path, top_k: int, caption_sort_by: 
         raise ValueError(f"Missing fact context columns {sorted(missing)}: {context_path}")
 
     fact_lookup = {}
+    fact_index_lookup = {}
     for row in pq.read_table(context_path, columns=columns).to_pylist():
         imgid = int(row["imgid"])
         if imgid in fact_lookup:
@@ -49,15 +51,30 @@ def load_rag_fact_lookup(context_path: str | Path, top_k: int, caption_sort_by: 
             len(captions), caption_sort_by, row.get("itm_scores"), f"for imgid={imgid}: {context_path}"
         )
         selected_indices = order[:top_k]
-        facts, seen = [], set()
+        facts = []
+        fact_to_index = {}
+        if return_indices:
+            indices_by_column = {column: [] for column in FACT_COLUMNS}
+            seen_indices = {column: set() for column in FACT_COLUMNS}
         for caption_index in selected_indices:
             for column in FACT_COLUMNS:
                 for text in row[column][caption_index]:
                     fact = normalize_fact(text)
-                    if fact and fact not in seen:
-                        seen.add(fact)
+                    if not fact:
+                        continue
+                    if fact not in fact_to_index:
+                        fact_to_index[fact] = len(facts)
                         facts.append(fact)
+                    if return_indices:
+                        index = fact_to_index[fact]
+                        if index not in seen_indices[column]:
+                            seen_indices[column].add(index)
+                            indices_by_column[column].append(index)
         fact_lookup[imgid] = facts
+        if return_indices:
+            fact_index_lookup[imgid] = indices_by_column
+    if return_indices:
+        return fact_lookup, fact_index_lookup
     return fact_lookup
 
 
@@ -65,10 +82,15 @@ class RAGFeatureDataset(Dataset):
     """Return (visual_inputs, facts, imgid); CLIP runs in the main process."""
 
     def __init__(self, df, features_path: str | Path, rag_contexts_path: str | Path,
-                 top_k: int, caption_sort_by: str = "itm"):
+                 top_k: int, caption_sort_by: str = "itm", return_indices: bool = False):
         self.dataframe = df.reset_index(drop=True)
         self.feature_store = H5FeatureStore(features_path)
-        self.fact_lookup = load_rag_fact_lookup(rag_contexts_path, top_k, caption_sort_by)
+        if return_indices:
+            self.fact_lookup, self.fact_index_lookup = load_rag_fact_lookup(
+                rag_contexts_path, top_k, caption_sort_by, return_indices=True,
+            )
+        else:
+            self.fact_lookup = load_rag_fact_lookup(rag_contexts_path, top_k, caption_sort_by)
         imgids = set(map(int, self.dataframe["imgid"]))
         missing = imgids - self.fact_lookup.keys()
         if missing:

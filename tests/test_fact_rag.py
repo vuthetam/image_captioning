@@ -237,8 +237,8 @@ class FusionTests(unittest.TestCase):
 
 class FactScriptTests(unittest.TestCase):
     def test_train_val_and_generate_each_use_one_batch_with_zero_workers(self):
-        train = importlib.import_module("script.fact_rag.train")
-        generate = importlib.import_module("script.fact_rag.generate_captions")
+        train = importlib.import_module("script.fact_fusion.train")
+        generate = importlib.import_module("script.fact_fusion.generate_captions")
         accelerator = Accelerator(cpu=True)
         text_model, tokenizer = tiny_clip(), TinyTokenizer()
         initial_text = copy.deepcopy(text_model.state_dict())

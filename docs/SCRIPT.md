@@ -939,6 +939,57 @@ giữa train/generate. Không cần thêm biến env cho alpha mặc định; mu
 khởi tạo có thể truyền `initial_alpha` khi tạo model. Epoch checkpoint và alpha
 được in khi generate; predictions lưu `imgid`, `cocoid`, `caption` như các pipeline khác.
 
+### Fact Fusion Dual Attention: hai memories và gate trong decoder
+
+Mã nguồn trong `src/fact_fusion_dual_attention`, scripts trong
+`script/fact_fusion_dual_attention`. Train captioner từ đầu với nhánh fusion
+giống Fact: dùng đủ objects/attributes/triplets, sort CLIP/ITM rồi lấy top-k,
+CLIP Text đóng băng theo `VISUAL_ENCODER_MODEL` và cache lười RAM CPU mỗi process.
+
+Nhánh bổ sung chọn attribute/triplet vectors từ chính fact memory sau projector,
+qua một residual FFN adapter `LayerNorm → Linear(D, 4D) → ReLU → Dropout →
+Linear(4D, D) → Dropout → cộng residual`. Adapter tính một lần trước decoder.
+Không tokenize facts theo vocabulary decoder, không dùng token context budget.
+
+Mỗi decoder layer có hai cross-attention chạy song song với cùng query sau
+masked self-attention và Add & Norm. Một nhánh đọc fused visual memory, nhánh
+còn lại đọc fact memory sau adapter. Hai contexts được LayerNorm riêng để tính
+gate; phép trộn vẫn dùng contexts gốc:
+
+```text
+G = sigmoid(MLP([H; LayerNorm_img(C_img); LayerNorm_fact(C_fact)]))
+C = (1 - G) * C_img + G * C_fact
+```
+
+Gate `[B,T,1]` riêng cho từng layer, khởi tạo bằng `0.1` rồi học cùng captioner
+qua caption cross-entropy. Mẫu thiếu attributes/triplets chỉ dùng nhánh ảnh;
+thiếu toàn bộ facts fusion vẫn báo lỗi. Script train bật DDP unused-parameter
+detection vì có batch bỏ qua nhánh fact trực tiếp. Generate tính hai memories
+một lần mỗi batch và dùng lại trong beam search; predictions có cocoid và in
+epoch checkpoint đã load.
+
+Ví dụ `.env` (các cấu hình khác giữ cùng run Fact làm mốc):
+
+```dotenv
+RUN_MODE=fact_fusion_dual_attention_itm_42
+SEED=42
+RAG_CONTEXTS_SUBDIR=rag_contexts
+TEXT_RAG_CAPTION_SORT_BY=itm
+TOP_K_CAPTIONS=4
+FACT_FUSION_NLAYERS=1
+FACT_TEXT_BATCH_SIZE=128
+```
+
+```bash
+accelerate launch script/fact_fusion_dual_attention/train.py
+accelerate launch script/fact_fusion_dual_attention/generate_captions.py
+python script/shared/evaluate.py
+```
+
+Dùng RUN_MODE riêng cho pipeline và từng seed để không nạp nhầm checkpoint.
+`initial_gate=0.1` là mặc định constructor, không cần thêm env cho gate.
+Thiết kế và checklist: [FACT_FUSION_DUAL_ATTENTION_PLAN.md](FACT_FUSION_DUAL_ATTENTION_PLAN.md).
+
 ## 11. Bổ sung COCO ID vào predictions
 
 Các script generate của baseline, image/text/multimodal RAG và các pipeline facts
