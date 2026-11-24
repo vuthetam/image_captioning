@@ -187,22 +187,27 @@ class DualAttentionTests(unittest.TestCase):
     def setUp(self):
         setup_reproducibility(42)
 
-    def test_fusion_reuses_projected_vectors_adapter_once_and_cls_flag(self):
+    def test_fusion_unchanged_adapter_uses_raw_vectors_once_and_cls_flag(self):
         model, values = make_model().eval(), model_inputs()
         base = copy_base_decoder(model)
         with patch.object(model.fact_adapter, "forward", wraps=model.fact_adapter.forward) as adapter:
             memory, facts, padding = encode_inputs(model, values)
         self.assertEqual(adapter.call_count, 1)
-        expected_memory, projected, _ = base.encode_fusion(
+        expected_memory, _, _ = base.encode_fusion(
             values["visual_inputs"], values["fact_features"], values["fact_attention_mask"],
         )
         torch.testing.assert_close(memory, expected_memory, rtol=0, atol=0)
-        torch.testing.assert_close(facts[0], model.fact_adapter(projected[0, [1, 2]]))
+        expected_raw = torch.stack([values["fact_features"][0, [1, 2]], values["fact_features"][1, [0, 0]]])
+        torch.testing.assert_close(adapter.call_args.args[0], expected_raw)
+        torch.testing.assert_close(facts[0], model.fact_adapter(values["fact_features"][0, [1, 2]]))
+        self.assertEqual(tuple(facts.shape), (2, 2, 16))
         self.assertEqual(padding.tolist(), [[False, False], [True, True]])
         self.assertEqual(facts[1].count_nonzero().item(), 0)
-        direct_grad = torch.autograd.grad(facts[0, :, 0].sum(), model.fact_projector[0].weight, retain_graph=True)[0]
+        direct_grad = torch.autograd.grad(
+            facts[0, :, 0].sum(), model.fact_projector[0].weight, retain_graph=True, allow_unused=True,
+        )[0]
         fusion_grad = torch.autograd.grad(memory[:, :, 0].sum(), model.fact_projector[0].weight)[0]
-        self.assertGreater(direct_grad.abs().sum().item(), 0)
+        self.assertIsNone(direct_grad)
         self.assertGreater(fusion_grad.abs().sum().item(), 0)
         cls_values = {**values, "include_cls_token": True}
         self.assertEqual(encode_inputs(model, cls_values)[0].size(1), memory.size(1) + 1)

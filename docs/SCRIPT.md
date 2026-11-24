@@ -946,9 +946,11 @@ Mã nguồn trong `src/fact_fusion_dual_attention`, scripts trong
 giống Fact: dùng đủ objects/attributes/triplets, sort CLIP/ITM rồi lấy top-k,
 CLIP Text đóng băng theo `VISUAL_ENCODER_MODEL` và cache lười RAM CPU mỗi process.
 
-Nhánh bổ sung chọn attribute/triplet vectors từ chính fact memory sau projector,
-qua một residual FFN adapter `LayerNorm → Linear(D, 4D) → ReLU → Dropout →
-Linear(4D, D) → Dropout → cộng residual`. Adapter tính một lần trước decoder.
+Nhánh bổ sung chọn attribute/triplet vectors từ vector CLIP trước fact projector,
+qua một residual FFN adapter `LayerNorm(C) → Linear(C, 4D) → ReLU → Dropout →
+Linear(4D, D) → Dropout → cộng residual`, với `C` là chiều CLIP và `D` là d_model.
+Residual dùng Identity khi `C == D`, Linear(C, D) khi khác chiều.
+Adapter tính một lần trước decoder.
 Không tokenize facts theo vocabulary decoder, không dùng token context budget.
 
 Mỗi decoder layer có hai cross-attention chạy song song với cùng query sau
@@ -989,6 +991,25 @@ python script/shared/evaluate.py
 Dùng RUN_MODE riêng cho pipeline và từng seed để không nạp nhầm checkpoint.
 `initial_gate=0.1` là mặc định constructor, không cần thêm env cho gate.
 Thiết kế và checklist: [FACT_FUSION_DUAL_ATTENTION_PLAN.md](FACT_FUSION_DUAL_ATTENTION_PLAN.md).
+
+### Fact Fusion Dual Attention Residual
+
+Bản sao pipeline Dual Attention hiện tại, gồm adapter nhận vectors CLIP trước
+fact projector. Khác biệt duy nhất về tính toán là công thức trộn trong decoder:
+
+```text
+C = C_img + G * C_fact
+```
+
+Gate vẫn khởi tạo bằng `0.1`. Đặt `RUN_MODE` mới trong `.env`, ví dụ
+`fact_fusion_dual_attention_residual_itm_43`, và đặt `SEED=43` cho lần chạy đó.
+Các cấu hình còn lại dùng như Dual Attention. Chạy:
+
+```bash
+accelerate launch script/fact_fusion_dual_attention_residual/train.py
+accelerate launch script/fact_fusion_dual_attention_residual/generate_captions.py
+python script/shared/evaluate.py
+```
 
 ## 11. Bổ sung COCO ID vào predictions
 

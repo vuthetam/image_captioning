@@ -2,6 +2,8 @@
 
 Ngày ghi nhận: 23/11/2026.
 
+Cập nhật 24/11/2026: adapter nhận vector CLIP trước fact projector. Cần train lại và dùng RUN_MODE mới để tránh resume checkpoint theo thiết kế cũ. Khi chiều CLIP bằng d_model, checkpoint cũ vẫn có thể nạp nhưng hành vi đã khác; khi hai chiều khác nhau, cấu trúc tham số adapter cũng thay đổi.
+
 Trạng thái: đã triển khai pipeline riêng theo thiết kế dưới đây; kết quả kiểm tra tại mục 12.
 
 ## 1. Mục tiêu và các quyết định đã chốt
@@ -39,10 +41,10 @@ Dùng nguyên quy tắc của `src/shared/facts/dataset.py` và kiến trúc tro
 
 - Chỉ lấy `attribute_texts` và `triplet_texts` từ đúng các captions đã chọn cho fusion.
 - Gọi `load_rag_fact_lookup(..., return_indices=True)` để tạo danh sách facts đã dedup và chỉ số theo từng cột trong cùng lượt đọc context. Các pipeline khác giữ mặc định `return_indices=False` để chỉ nhận danh sách facts như trước.
-- Chọn các index thuộc attribute/triplet, mỗi index một lần theo thứ tự danh sách fusion đã dedup. Lấy vector từ `fact_memory` mà `encode_fusion()` đã trả về, sau fact projector; không cần loader đọc lại context riêng.
+- Chọn các index thuộc attribute/triplet, mỗi index một lần theo thứ tự danh sách fusion đã dedup. Lấy vector CLIP trực tiếp từ `fact_features`, trước fact projector; không cần loader đọc lại context riêng.
 - Một chuỗi xuất hiện ở cả object và attribute/triplet vẫn được chọn cho nhánh trực tiếp nếu nó xuất hiện trong attribute/triplet. Không dựa vào các khoảng index cố định để xác định loại fact vì fusion đã dedup giữa các cột.
 - Index và padding mask của tập con phải luôn đồng bộ với thứ tự facts dùng cho CLIP/fusion. Không tự sort lại vectors sau khi tạo index.
-- Không gọi CLIP lần hai, không tạo fact projector thứ hai; gradient của cả hai nhánh cùng đi về fact projector hiện có.
+- Không gọi CLIP lần hai. Nhánh bổ sung dùng adapter riêng; gradient của nhánh này không đi qua fact projector của fusion. CLIP vẫn đóng băng.
 - Không tokenize sang vocabulary decoder, không thêm SOS/EOS, không giới hạn theo token context. Số vectors là số attribute/triplet facts duy nhất thực tế, có padding khi ghép batch.
 - Một fact quá dài đối với CLIP vẫn báo lỗi theo encoder hiện tại; không âm thầm cắt câu.
 
@@ -51,26 +53,28 @@ Dùng nguyên quy tắc của `src/shared/facts/dataset.py` và kiến trúc tro
 Adapter là một residual FFN với Pre-LayerNorm. Nó xử lý độc lập từng fact bằng cùng trọng số, không có self-attention giữa các facts.
 
 ```text
-F: attribute/triplet vectors sau fact projector [B, N, D]
+F: vector CLIP attribute/triplet trước fact projector [B, N, C]
 │
 ├──────────────────────────────────────────────┐
 ↓                                              │
-LayerNorm(D)                                   │
+LayerNorm(C)                                   │
 ↓                                              │
-Linear(D → 4D)                                 │
+Linear(C → 4D)                                 │
 ↓                                              │
 ReLU → Dropout                                 │
 ↓                                              │
 Linear(4D → D)                                 │
 ↓                                              │
 Dropout                                        │
-└────────────────── cộng F ─────────────────────┘
+└──────────── cộng residual(F) ──────────────────┘
                         ↓
              F_adapted: [B, N, D]
 ```
 
 ```text
-F_adapted = F + Dropout(W2 · Dropout(ReLU(W1 · LayerNorm(F) + b1)) + b2)
+F_adapted = residual(F) + Dropout(W2 · Dropout(ReLU(W1 · LayerNorm(F) + b1)) + b2)
+C = fact_feature_dim; D = d_model
+residual(F) = F nếu C == D; Linear(C → D)(F) nếu C != D.
 ```
 
 - LayerNorm của adapter có tham số riêng với LayerNorm của fact projector.
@@ -146,9 +150,11 @@ Ký hiệu `B`: số ảnh, `P`: số patch, `N_all`: số facts fusion, `N`: s�
 | Thành phần | Shape |
 | --- | --- |
 | CLIP fact features | `[B, N_all, clip_dim]` |
-| Fact memory sau projector, trước chọn tập con | `[B, N_all, D]` |
+| Fact memory sau projector, chỉ dùng cho fusion | `[B, N_all, D]` |
+| Vector CLIP trước chọn tập con | `[B, N_all, C]` |
 | Fused visual memory | `[B, P, D]` |
-| Attribute/triplet memory trước và sau adapter | `[B, N, D]` |
+| Attribute/triplet memory trước adapter | `[B, N, C]` |
+| Attribute/triplet memory sau adapter | `[B, N, D]` |
 | Fact key padding mask | `[B, N]`, True = padding |
 | H, C_img, C_fact, C_img_gate, C_fact_gate, C | `[B, T, D]` |
 | Đầu vào MLP gate | `[B, T, 3D]` |
@@ -228,7 +234,7 @@ RAG_CONTEXTS_SUBDIR và các config khác giữ cùng giá trị với run Fact 
 
 1. **Chọn facts:** so sánh fusion facts với loader Fact hiện có cho cả clip/itm và top-k; kiểm tra dedup, trùng chuỗi giữa các loại fact, thứ tự index và mask. Không sửa parquet gốc.
 2. **Fusion tương đương:** với cùng weights, inputs và eval mode, fused visual memory phải giống Fact. Test bỏ/giữ CLS và ảnh không có fusion fact báo lỗi.
-3. **Adapter:** giữ đúng shape, không làm lẫn batch/fact, chỉ được gọi một lần trong encode_memory. Padding được mask; gradient đến fact projector qua cả hai nhánh.
+3. **Adapter:** nhận vector CLIP trước projector và trả d_model, không làm lẫn batch/fact, chỉ được gọi một lần trong encode_memory. Padding được mask; gradient đến fact projector chỉ qua fusion, nhánh bổ sung học adapter riêng.
 4. **Dual attention/gate:** hai nhánh nhận cùng H sau Add & Norm và có tham số riêng; contexts qua hai LayerNorm riêng khi tính gate, nhưng phép trộn dùng contexts gốc. Gate khởi tạo 0.1, shape `[B,T,1]`, trộn đúng công thức. Các decoder layers không dùng chung cùng một module gate/attention hoặc LayerNorm đầu vào gate.
 5. **Đối chiếu decoder cũ:** ép gate bằng 0 trong test, chuyển weights phần chung từ decoder Fact, bật eval và so logits với đường ảnh cũ. Đây là kiểm tra toán học với cùng weights, không yêu cầu hai mô hình train từ đầu cùng seed phải có weights/metrics giống nhau.
 6. **Trường hợp rỗng/padding:** test có facts, chỉ một ảnh thiếu facts, cả batch thiếu facts và padding bị thay giá trị; không NaN, ảnh thiếu facts đi đúng đường ảnh.
@@ -253,10 +259,11 @@ Sau khi kiểm tra code đạt yêu cầu, đánh giá các seed 42/43/44 với 
 
 Đã tạo `src/fact_fusion_dual_attention`, `script/fact_fusion_dual_attention/train.py`, `script/fact_fusion_dual_attention/generate_captions.py` và `tests/test_fact_fusion_dual_attention.py`. Không thay source các pipeline cũ hoặc shared.
 
-- Dataset kế thừa shared Fact dataset; chỉ bổ sung index tập con và collate index/mask. `encode_memory()` dùng lại `encode_fusion()` và lấy đúng vectors sau projector bằng gather có gradient, sau đó chạy một adapter dùng chung.
+- Dataset kế thừa shared Fact dataset; chỉ bổ sung index tập con và collate index/mask. `encode_memory()` dùng lại `encode_fusion()` và lấy đúng vectors CLIP trước projector bằng gather, sau đó chạy một adapter dùng chung.
 - Decoder layer kế thừa `nn.TransformerDecoderLayer` để giữ self-attention, các norms và FFN cũ; thay khối cross-attention bằng hai nhánh có gate. LayerNorm của hai contexts chỉ dùng trong đầu vào MLP gate.
 - Nhánh fact attention/gate chỉ chạy trên ảnh có facts bổ sung. Script train dùng `find_unused_parameters=True` như mục 7.
-- Đã pass 11 test mới: chọn facts clip/itm và dedup provenance, tuple collation, fusion/CLS tương đương Fact, tập con projected vectors, adapter một lần, gate/norm/mix đúng thiết kế, đường ảnh khi thiếu facts, padding/permutation, causal mask, last-step logits, gradients qua hai updates trên cùng batch, beam routing, checkpoint/resume và script integration.
+- Kiểm tra ban đầu 23/11: đã pass 11 test cho phiên bản adapter dùng projected vectors.
+- Cập nhật 24/11: đã pass 8 test model/decoder, gồm adapter nhận đúng raw CLIP vectors, fusion giữ nguyên, gradient nhánh bổ sung tách khỏi fact projector, padding/rỗng, gate=0 tương đương Fact, causal mask, backward và beam routing.
 - Test script train/val/generate mỗi giai đoạn chỉ một batch hai ảnh, `NUM_WORKERS=0`, dùng tiny CLIP local. Kiểm tra cache tái sử dụng, CLIP đóng băng, JSON có imgid/cocoid/caption, scheduler global step và strict checkpoint loading.
 - CUDA FP16 forward/backward và beam search trên một batch đã pass; gradients hữu hạn.
 - DDP Gloo hai process CPU đã pass: gradient và SGD updates khớp reference batch gộp khi một rank thiếu facts, cả hai rank có facts và cả hai rank thiếu facts. Test dùng lại một batch tổng hợp nhỏ mỗi rank, không chạy full training.
