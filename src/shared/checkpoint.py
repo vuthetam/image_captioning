@@ -3,6 +3,23 @@ import torch
 
 from src.shared.scheduler import optimizer_steps, unwrap_scheduler
 
+def save_epoch_checkpoint(path: str | Path, model, epoch: int, train_loss: float, model_config: dict,
+                          vocab, seed: int, accelerator) -> Path:
+    """Save inference/fine-tuning weights and their input configuration after an epoch."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint = {
+        "epoch": int(epoch),
+        "train_loss": float(train_loss),
+        "model_state_dict": accelerator.get_state_dict(model),
+        "model_config": model_config,
+        "vocab_state": vocab.to_state(),
+        "seed": int(seed),
+    }
+    torch.save(checkpoint, path)
+    return path
+
+
 def save_checkpoint(
     path: str | Path,
     model,

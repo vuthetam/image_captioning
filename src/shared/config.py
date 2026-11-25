@@ -64,6 +64,7 @@ SPLITS_DIR = ARTIFACTS_DIR / "splits"
 safe_mkdir(SPLITS_DIR)
 TRAIN_DF_PATH = SPLITS_DIR / "train_df.parquet"
 VAL_DF_PATH = SPLITS_DIR / "val_df.parquet"
+VAL_GROUPED_DF_PATH = SPLITS_DIR / "val_grouped_df.parquet"
 TEST_DF_PATH = SPLITS_DIR / "test_df.parquet"
 
 # Preserve the vocabulary used by existing checkpoints.
@@ -142,7 +143,7 @@ TEST_I2I_PATH = RAG_CONTEXTS_DIR / "test_i2i.parquet"
 # ==========================================
 # 6. EXPERIMENT OUTPUTS & CHECKPOINTS
 # ==========================================
-RESULT_DIR = ARTIFACTS_DIR / "results" / f"seed_{SEED}" / RUN_MODE
+RESULT_DIR = Path(os.getenv("RESULT_DIR", str(ARTIFACTS_DIR / "results" / f"seed_{SEED}" / RUN_MODE)))
 safe_mkdir(RESULT_DIR)
 PREDICTIONS_PATH = RESULT_DIR / "predictions.json"
 METRICS_PATH = RESULT_DIR / "metrics.json"

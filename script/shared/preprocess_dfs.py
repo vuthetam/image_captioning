@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.shared.config import DATASET_COCO_PATH, TEST_DF_PATH, TRAIN_DF_PATH, VAL_DF_PATH
+from src.shared.config import DATASET_COCO_PATH, TEST_DF_PATH, TRAIN_DF_PATH, VAL_DF_PATH, VAL_GROUPED_DF_PATH
 
 
 def resolve_path(candidates: list[Path]) -> Path:
@@ -31,7 +31,7 @@ def get_dataset_path() -> Path:
     )
 
 
-def build_split_dataframes(dataset_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def build_split_dataframes(dataset_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     with dataset_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -44,6 +44,14 @@ def build_split_dataframes(dataset_path: Path) -> tuple[pd.DataFrame, pd.DataFra
 
     train_df = images_df[images_df["split"].isin(["train", "restval"])].reset_index(drop=True)
     val_df = images_df[images_df["split"] == "val"].reset_index(drop=True)
+
+    # Group validation references using the same schema as the test split.
+    val_grouped_df = (
+        val_df.groupby(["imgid", "filepath", "filename", "split"], sort=False)
+        .agg(all_tokens=("tokens", list), all_raws=("raw", list), cocoid=("cocoid", "first"))
+        .reset_index()
+    )
+
     # Test set: one row per image, retaining its COCO ID and all reference captions.
     test_raw = images_df[images_df["split"] == "test"]
     test_df = (
@@ -51,35 +59,35 @@ def build_split_dataframes(dataset_path: Path) -> tuple[pd.DataFrame, pd.DataFra
         .agg(all_tokens=("tokens", list), all_raws=("raw", list), cocoid=("cocoid", "first"))
         .reset_index()
     )
-    return train_df, val_df, test_df
+    return train_df, val_df, val_grouped_df, test_df
 
 
-def save_dataframes(
-    train_df: pd.DataFrame,
-    val_df: pd.DataFrame,
-    test_df: pd.DataFrame,
-) -> tuple[Path, Path, Path]:
-    for path in [TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH]:
+def save_dataframes(train_df: pd.DataFrame, val_df: pd.DataFrame, val_grouped_df: pd.DataFrame,
+                    test_df: pd.DataFrame) -> tuple[Path, Path, Path, Path]:
+    for path in [TRAIN_DF_PATH, VAL_DF_PATH, VAL_GROUPED_DF_PATH, TEST_DF_PATH]:
         path.parent.mkdir(parents=True, exist_ok=True)
 
     train_df.to_parquet(TRAIN_DF_PATH, index=False)
     val_df.to_parquet(VAL_DF_PATH, index=False)
+    val_grouped_df.to_parquet(VAL_GROUPED_DF_PATH, index=False)
     test_df.to_parquet(TEST_DF_PATH, index=False)
 
-    return TRAIN_DF_PATH, VAL_DF_PATH, TEST_DF_PATH
+    return TRAIN_DF_PATH, VAL_DF_PATH, VAL_GROUPED_DF_PATH, TEST_DF_PATH
 
 
 def main() -> None:
     dataset_path = get_dataset_path()
-    train_df, val_df, test_df = build_split_dataframes(dataset_path)
+    train_df, val_df, val_grouped_df, test_df = build_split_dataframes(dataset_path)
 
     print(f"train_df: {len(train_df):,}")
     print(f"val_df:   {len(val_df):,}")
+    print(f"val_grouped_df: {len(val_grouped_df):,}")
     print(f"test_df:  {len(test_df):,}")
 
-    train_path, val_path, test_path = save_dataframes(train_df, val_df, test_df)
+    train_path, val_path, val_grouped_path, test_path = save_dataframes(train_df, val_df, val_grouped_df, test_df)
     print(train_path)
     print(val_path)
+    print(val_grouped_path)
     print(test_path)
 
 

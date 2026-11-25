@@ -1041,6 +1041,60 @@ Train/generate đọc file từ `VOCAB_PATH` và báo lỗi nếu thiếu hoặc
 vào score/length penalty và không sinh SEP trong caption.
 Chi tiết: [FACT_FUSION_PREFIX_PLAN.md](FACT_FUSION_PREFIX_PLAN.md).
 
+### Chọn checkpoint bằng validation CIDEr sau khi train
+
+Fact Fusion và Fact Fusion Prefix có thêm quy trình lưu từng epoch rồi chọn checkpoint
+bằng CIDEr. Đặt `RUN_MODE` riêng cho mỗi pipeline và seed, dùng cùng cấu hình khi
+train, chọn checkpoint và generate test. Script train mới yêu cầu thư mục chưa có
+`epoch_*.pth` để tránh trộn trọng số từ các lần chạy khác nhau.
+
+Preprocessing tạo cả `val_df.parquet` và `val_grouped_df.parquet`. Grouped validation
+có một dòng cho mỗi ảnh, giữ đủ `all_raws`, `all_tokens` và `cocoid`, cùng schema với
+test. Đường dẫn dùng `VAL_GROUPED_DF_PATH` trong config.
+
+```bash
+python script/shared/preprocess_dfs.py
+accelerate launch script/fact_fusion/train_save_epochs.py
+accelerate launch script/fact_fusion/select_checkpoint.py
+accelerate launch script/fact_fusion/generate_captions.py
+python script/shared/evaluate.py
+```
+
+Với Prefix, chuẩn bị vocabulary có `<sep>` và đặt `VOCAB_PATH` như hướng dẫn ở trên.
+
+```bash
+accelerate launch script/fact_fusion_prefix/train_save_epochs.py
+accelerate launch script/fact_fusion_prefix/select_checkpoint.py
+accelerate launch script/fact_fusion_prefix/generate_captions.py
+python script/shared/evaluate.py
+```
+
+`train_save_epochs.py` train từ đầu, in train loss và lưu `epoch_01.pth`,
+`epoch_02.pth`, ... trong `checkpoints/<RUN_MODE>/`. Mỗi file lưu trọng số model,
+epoch, train loss, cấu hình model/retrieval, vocabulary và seed. Quy trình này bỏ
+validation loss, optimizer/scheduler trong checkpoint và `last_checkpoint.pth`.
+Các file trọng số dùng được để khởi tạo giai đoạn fine-tune hoặc học tăng cường.
+
+`select_checkpoint.py` sinh một caption cho mỗi ảnh validation ở từng epoch bằng
+beam search hiện tại, dùng `BEAM_SIZE`, `MAX_LENGTH` và length penalty `1.0`, giống
+script generate test. References được PTB-tokenize một lần, chỉ chấm CIDEr.
+Facts CLIP được cache và dùng lại giữa các checkpoint trong cùng lần chạy.
+Khi dùng Accelerate, captions được gather trước khi chấm trên main process.
+
+Kết quả nằm cùng thư mục checkpoint.
+
+- `best_checkpoint.pth` là bản sao checkpoint có validation CIDEr cao nhất,
+  tương thích với `generate_captions.py` hiện có. Nếu bằng điểm, giữ epoch sớm hơn.
+- Một file `checkpoint_scores.json` ghi cấu hình generation, từng epoch và CIDEr,
+  epoch tốt nhất, điểm tốt nhất và đường dẫn best checkpoint. Điểm JSON giữ thang
+  đo gốc như `metrics.json`, console hiển thị nhân 100.
+
+JSON được cập nhật sau mỗi checkpoint đã chấm. Chạy lại script sẽ chấm lại toàn bộ
+epoch và cập nhật cùng file JSON. Quá trình chọn checkpoint dùng grouped validation;
+đánh giá test chạy sau khi đã chọn best.
+
+`train.py` tiếp tục phục vụ quy trình chọn checkpoint theo val loss.
+
 ## 11. Bổ sung COCO ID vào predictions
 
 Các script generate của baseline, image/text/multimodal RAG và các pipeline facts
