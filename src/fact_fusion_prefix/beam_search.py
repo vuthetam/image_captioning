@@ -24,6 +24,9 @@ def beam_search(decoder, memory, vocab, prefix_ids, prefix_lengths, beam_size=5,
                 length_penalty=1.0, memory_key_padding_mask=None):
     if not 1 <= beam_size <= len(vocab) or max_length < 2:
         raise ValueError("Invalid beam size or caption max_length.")
+    sep_idx = vocab.sep_idx()
+    if sep_idx is None:
+        raise ValueError("Prefix vocabulary must contain the SEP special token.")
     batch_size = memory.size(0)
     device = memory.device
     if prefix_ids.size(0) != batch_size or prefix_lengths.shape != (batch_size,):
@@ -53,7 +56,7 @@ def beam_search(decoder, memory, vocab, prefix_ids, prefix_lengths, beam_size=5,
         )
         last_logits = logits[torch.arange(logits.size(0), device=device), lengths - 1]
         log_probs = F.log_softmax(last_logits.float(), dim=-1)
-        log_probs[:, vocab.sep_idx()] = float("-inf")
+        log_probs[:, sep_idx] = float("-inf")
         log_probs[finished] = float("-inf")
         log_probs[finished, vocab.pad_idx()] = 0
         candidates = scores.unsqueeze(1) + log_probs

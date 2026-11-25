@@ -71,8 +71,8 @@ class Vocabulary:
     def unk_idx(self) -> int:
         return self.stoi[self.unk_token]
 
-    def sep_idx(self) -> int:
-        return self.stoi["<sep>"]
+    def sep_idx(self) -> int | None:
+        return self.stoi.get("<sep>")
 
     def encode_from_tokens(
         self,

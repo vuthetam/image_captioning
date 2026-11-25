@@ -35,6 +35,7 @@ def beam_search(
     device = memory.device
     k = beam_size
     V = len(vocab)
+    sep_idx = vocab.sep_idx()
 
     # ── Expand memory for k beams per image ───────────────────────────────────
     # (B, S, D) → (B, k, S, D) → (B*k, S, D)
@@ -62,6 +63,9 @@ def beam_search(
             memory_key_padding_mask=memory_key_padding_mask
         )                                                              # (B*k, t, V)
         log_probs = F.log_softmax(logits[:, -1, :], dim=-1)            # (B*k, V)
+
+        if sep_idx is not None:
+            log_probs[:, sep_idx] = float("-inf")
 
         # Finished beams only extend with pad (score unchanged)
         log_probs[eos_mask] = float("-inf")
