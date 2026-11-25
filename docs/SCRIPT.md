@@ -1011,6 +1011,36 @@ accelerate launch script/fact_fusion_dual_attention_residual/generate_captions.p
 python script/shared/evaluate.py
 ```
 
+### Fact Fusion Prefix: facts làm prefix trong decoder
+
+Nhánh fusion giống Fact Fusion. Attributes/triplets từ cùng top-k captions tạo
+prefix `fact₁ <sep> fact₂ ... <sos>`, dùng chung embedding decoder với caption.
+Prefix attention hai chiều; caption causal attention và đọc toàn bộ prefix.
+Cross-attention tiếp tục đọc fused memory. Loss chỉ tính target caption và EOS.
+
+`FACT_PREFIX_TOKENS_PER_CAPTION=30` mặc định; giới hạn prefix bằng
+`TOP_K_CAPTIONS * FACT_PREFIX_TOKENS_PER_CAPTION + 1`, gồm SEP và SOS.
+Nối prefix thật với caption rồi padding cuối batch, không padding riêng đến giới hạn.
+
+Đặt RUN_MODE mới, ví dụ `fact_fusion_prefix_itm_42`, và dùng cùng cấu hình khi generate:
+
+```bash
+python script/fact_fusion_prefix/build_vocab.py --vocab-path artifacts/vocab_v3.json --output-path artifacts/vocab_prefix.json
+```
+
+Sau đó đặt `VOCAB_PATH=artifacts/vocab_prefix.json` trong `.env` rồi chạy:
+
+```bash
+accelerate launch script/fact_fusion_prefix/train.py
+accelerate launch script/fact_fusion_prefix/generate_captions.py
+python script/shared/evaluate.py
+```
+
+Script tạo vocab giữ IDs cũ và thêm SEP; `--output-path` bắt buộc chỉ file đầu ra riêng.
+Train/generate đọc file từ `VOCAB_PATH` và báo lỗi nếu thiếu hoặc không có SEP. Beam search riêng không tính facts
+vào score/length penalty và không sinh SEP trong caption.
+Chi tiết: [FACT_FUSION_PREFIX_PLAN.md](FACT_FUSION_PREFIX_PLAN.md).
+
 ## 11. Bổ sung COCO ID vào predictions
 
 Các script generate của baseline, image/text/multimodal RAG và các pipeline facts

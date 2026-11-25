@@ -208,6 +208,12 @@ MAX_CTX_LENGTH = int(
 FACT_CTX_TOKENS_PER_CAPTION = int(os.getenv("FACT_CTX_TOKENS_PER_CAPTION", "20"))
 MAX_FACT_CTX_LENGTH = TOP_K_CAPTIONS * FACT_CTX_TOKENS_PER_CAPTION
 
+# Fact-prefix decoder: total budget includes separators and the final SOS.
+FACT_PREFIX_TOKENS_PER_CAPTION = int(os.getenv("FACT_PREFIX_TOKENS_PER_CAPTION", "30"))
+if FACT_PREFIX_TOKENS_PER_CAPTION < 1:
+    raise ValueError("FACT_PREFIX_TOKENS_PER_CAPTION must be positive.")
+MAX_FACT_PREFIX_LENGTH = TOP_K_CAPTIONS * FACT_PREFIX_TOKENS_PER_CAPTION + 1
+
 # All fact pipelines: fusion depth and the maximum uncached phrases encoded at once.
 FACT_FUSION_NLAYERS = int(os.getenv("FACT_FUSION_NLAYERS", "1"))
 FACT_TEXT_BATCH_SIZE = int(os.getenv("FACT_TEXT_BATCH_SIZE", "128"))
