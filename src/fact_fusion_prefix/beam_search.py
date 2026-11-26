@@ -57,6 +57,8 @@ def beam_search(decoder, memory, vocab, prefix_ids, prefix_lengths, beam_size=5,
         last_logits = logits[torch.arange(logits.size(0), device=device), lengths - 1]
         log_probs = F.log_softmax(last_logits.float(), dim=-1)
         log_probs[:, sep_idx] = float("-inf")
+        log_probs[:, vocab.sos_idx()] = float("-inf")
+        log_probs[:, vocab.pad_idx()] = float("-inf")
         log_probs[finished] = float("-inf")
         log_probs[finished, vocab.pad_idx()] = 0
         candidates = scores.unsqueeze(1) + log_probs

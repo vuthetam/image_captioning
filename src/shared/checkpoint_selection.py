@@ -69,14 +69,10 @@ def select_best_checkpoint(checkpoint_paths, evaluate_checkpoint, best_path, sco
             report["best_epoch"], report["best_CIDEr"] = epoch, score
             if accelerator.is_main_process:
                 best_path.parent.mkdir(parents=True, exist_ok=True)
-                temporary_best = best_path.with_suffix(best_path.suffix + ".tmp")
-                shutil.copyfile(checkpoint_path, temporary_best)
-                temporary_best.replace(best_path)
+                shutil.copyfile(checkpoint_path, best_path)
         if accelerator.is_main_process:
             scores_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary_report = scores_path.with_suffix(scores_path.suffix + ".tmp")
-            temporary_report.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
-            temporary_report.replace(scores_path)
+            scores_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
         accelerator.print(f"Epoch {epoch:02d}; validation CIDEr={score * 100:.3f}; best epoch={report['best_epoch']}")
         accelerator.wait_for_everyone()
     return report

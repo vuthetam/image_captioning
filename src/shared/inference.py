@@ -35,7 +35,6 @@ def beam_search(
     device = memory.device
     k = beam_size
     V = len(vocab)
-    sep_idx = vocab.sep_idx()
 
     # ── Expand memory for k beams per image ───────────────────────────────────
     # (B, S, D) → (B, k, S, D) → (B*k, S, D)
@@ -49,11 +48,11 @@ def beam_search(
     # All beams start with <sos>; only beam-0 per image is active (score=0),
     # beams 1..k-1 start at -inf so they don't pollute the first topk.
     sequences = torch.full((B * k, 1), vocab.sos_idx(), dtype=torch.long, device=device)
-    scores = torch.full((B * k,), float("-inf"), device=device)
+    scores = torch.full((B * k,), float("-inf"), device=device, dtype=torch.float32)
     scores[torch.arange(B, device=device) * k] = 0.0
 
     eos_mask = torch.zeros(B * k, dtype=torch.bool, device=device)
-    seq_lengths = torch.ones(B * k, device=device)
+    seq_lengths = torch.ones(B * k, device=device, dtype=torch.float32)
 
     # ── Decoding loop ─────────────────────────────────────────────────────────
     for _ in range(max_length - 1):
@@ -62,10 +61,13 @@ def beam_search(
             memory=memory,
             memory_key_padding_mask=memory_key_padding_mask
         )                                                              # (B*k, t, V)
-        log_probs = F.log_softmax(logits[:, -1, :], dim=-1)            # (B*k, V)
+        log_probs = F.log_softmax(logits[:, -1, :].float(), dim=-1)    # (B*k, V)
 
+        sep_idx = vocab.sep_idx()
         if sep_idx is not None:
             log_probs[:, sep_idx] = float("-inf")
+        log_probs[:, vocab.sos_idx()] = float("-inf")
+        log_probs[:, vocab.pad_idx()] = float("-inf")
 
         # Finished beams only extend with pad (score unchanged)
         log_probs[eos_mask] = float("-inf")

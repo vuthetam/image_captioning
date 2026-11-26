@@ -1,4 +1,4 @@
-"""Offline CIDEr selection and one-batch integration for both fact pipelines."""
+"""Offline CIDEr selection and one-batch integration for fact captioning pipelines."""
 
 import copy
 import importlib
@@ -89,8 +89,13 @@ class CheckpointSelectionTests(unittest.TestCase):
             self.assertEqual(len(saved["epochs"]), 1)
             self.assertEqual((root / "best.pth").read_bytes(), b"first")
 
-    def test_one_batch_train_select_and_existing_generate_for_both_pipelines(self):
-        for pipeline in ["fact_fusion", "fact_fusion_prefix"]:
+    def test_one_batch_train_select_and_existing_generate(self):
+        model_names = {
+            "fact_fusion": "FactRAGCaptioner",
+            "fact_fusion_prefix": "FactFusionPrefixCaptioner",
+            "fact_fusion_token_bias": "FactFusionTokenBiasCaptioner",
+        }
+        for pipeline in model_names:
             with self.subTest(pipeline=pipeline), tempfile.TemporaryDirectory() as directory, ExitStack() as cleanup:
                 root = Path(directory)
                 train = importlib.import_module(f"script.{pipeline}.train_save_epochs")
@@ -111,7 +116,7 @@ class CheckpointSelectionTests(unittest.TestCase):
                 pd.DataFrame({"imgid": [7, 8], "cocoid": [101, 202],
                               "all_raws": [["A red dog.", "A dog on grass."], ["A tree."]]}).to_parquet(grouped_path)
                 vocab = vocabulary()
-                if pipeline == "fact_fusion_prefix":
+                if pipeline in {"fact_fusion_prefix", "fact_fusion_token_bias"}:
                     vocab._add_token("<sep>")
                     vocab.special_tokens.append("<sep>")
                 vocab_path = vocab.save(root / "vocab.json")
@@ -153,6 +158,13 @@ class CheckpointSelectionTests(unittest.TestCase):
                 self.assertNotIn("scheduler_state_dict", checkpoint)
                 self.assertNotIn("best_val_loss", checkpoint)
                 self.assertEqual(list(training["RUN_CHECKPOINT_DIR"].glob("last*")), [])
+                if pipeline == "fact_fusion_token_bias":
+                    self.assertEqual(checkpoint["model_config"]["model_kwargs"]["initial_alpha"], .3)
+                    self.assertIn("decoder.raw_alpha", checkpoint["model_state_dict"])
+                    self.assertIn("decoder.token_gate_mlp.0.weight", checkpoint["model_state_dict"])
+                    trained_model = self.accelerator.unwrap_model(train_epoch.call_args.args[0])
+                    self.assertIsNotNone(trained_model.decoder.raw_alpha.grad)
+                    self.assertTrue(torch.isfinite(trained_model.decoder.raw_alpha.grad).all())
                 with self.assertRaisesRegex(FileExistsError, "already exist"):
                     train.main()
 
@@ -168,7 +180,7 @@ class CheckpointSelectionTests(unittest.TestCase):
                 self.assertEqual([row["CIDEr"] for row in report["epochs"]], [.7, .9])
                 self.assertEqual(torch.load(root / "best.pth", weights_only=True)["epoch"], 2)
                 # The existing checkpoint loader and generation entry point accept the selected file.
-                model_type = generate.FactRAGCaptioner if pipeline == "fact_fusion" else generate.FactFusionPrefixCaptioner
+                model_type = getattr(generate, model_names[pipeline])
                 model = model_type(**checkpoint["model_config"]["model_kwargs"])
                 self.assertEqual(load_checkpoint(root / "best.pth", model)[0], 2)
                 with self.assertRaisesRegex(ValueError, "configuration differs"):

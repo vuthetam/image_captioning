@@ -1043,7 +1043,7 @@ Chi tiết: [FACT_FUSION_PREFIX_PLAN.md](FACT_FUSION_PREFIX_PLAN.md).
 
 ### Chọn checkpoint bằng validation CIDEr sau khi train
 
-Fact Fusion và Fact Fusion Prefix có thêm quy trình lưu từng epoch rồi chọn checkpoint
+Fact Fusion, Fact Fusion Prefix và Fact Fusion Token Bias có thêm quy trình lưu từng epoch rồi chọn checkpoint
 bằng CIDEr. Đặt `RUN_MODE` riêng cho mỗi pipeline và seed, dùng cùng cấu hình khi
 train, chọn checkpoint và generate test. Script train mới yêu cầu thư mục chưa có
 `epoch_*.pth` để tránh trộn trọng số từ các lần chạy khác nhau.
@@ -1066,6 +1066,17 @@ Với Prefix, chuẩn bị vocabulary có `<sep>` và đặt `VOCAB_PATH` như h
 accelerate launch script/fact_fusion_prefix/train_save_epochs.py
 accelerate launch script/fact_fusion_prefix/select_checkpoint.py
 accelerate launch script/fact_fusion_prefix/generate_captions.py
+python script/shared/evaluate.py
+```
+
+Fact Fusion Token Bias dùng cùng quy trình, với `initial_alpha=0.3` như script
+train Token Bias hiện tại. Cấu hình này được lưu trong từng checkpoint và dùng lại
+khi chọn best. Log mỗi epoch có thêm giá trị alpha đã học.
+
+```bash
+accelerate launch script/fact_fusion_token_bias/train_save_epochs.py
+accelerate launch script/fact_fusion_token_bias/select_checkpoint.py
+accelerate launch script/fact_fusion_token_bias/generate_captions.py
 python script/shared/evaluate.py
 ```
 
