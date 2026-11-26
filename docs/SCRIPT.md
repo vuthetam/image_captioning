@@ -1041,9 +1041,35 @@ Train/generate đọc file từ `VOCAB_PATH` và báo lỗi nếu thiếu hoặc
 vào score/length penalty và không sinh SEP trong caption.
 Chi tiết: [FACT_FUSION_PREFIX_PLAN.md](FACT_FUSION_PREFIX_PLAN.md).
 
+### Fact Fusion Prefix Segment: thêm segment embedding
+
+Pipeline `fact_fusion_prefix_segment` là bản sao độc lập của Prefix, bổ sung
+`Embedding(2, d_model)` có thể học, cả hai vector khởi tạo bằng 0:
+
+- Segment 0: các fact và `<sep>`.
+- Segment 1: từ `<sos>` trở đi, gồm caption.
+
+Đầu vào decoder là word embedding đã scale + positional encoding + segment embedding.
+Giữ nguyên vị trí liên tục, fusion, retrieval, loss và beam search của Prefix.
+Ranh giới segment caption là `prefix_lengths - 1`; mask attention vẫn dùng
+`prefix_lengths`, nên `<sos>` vẫn đọc hai chiều toàn bộ prefix như bản cũ.
+
+Dùng lại `vocab_prefix.json` qua `VOCAB_PATH`, không thêm special token hoặc biến
+config mới. Đặt `RUN_MODE` riêng, ví dụ `fact_fusion_prefix_segment_42`, rồi train từ đầu:
+
+```bash
+accelerate launch script/fact_fusion_prefix_segment/train_save_epochs.py
+accelerate launch script/fact_fusion_prefix_segment/select_checkpoint.py
+accelerate launch script/fact_fusion_prefix_segment/generate_captions.py
+python script/shared/evaluate.py
+```
+
+`train.py` trong cùng thư mục vẫn hỗ trợ chọn checkpoint bằng val loss.
+Không nạp trực tiếp checkpoint Prefix cũ vào pipeline mới vì có thêm trọng số segment.
+
 ### Chọn checkpoint bằng validation CIDEr sau khi train
 
-Fact Fusion, Fact Fusion Prefix và Fact Fusion Token Bias có thêm quy trình lưu từng epoch rồi chọn checkpoint
+Fact Fusion, Fact Fusion Prefix, Fact Fusion Prefix Segment và Fact Fusion Token Bias có quy trình lưu từng epoch rồi chọn checkpoint
 bằng CIDEr. Đặt `RUN_MODE` riêng cho mỗi pipeline và seed, dùng cùng cấu hình khi
 train, chọn checkpoint và generate test. Script train mới yêu cầu thư mục chưa có
 `epoch_*.pth` để tránh trộn trọng số từ các lần chạy khác nhau.

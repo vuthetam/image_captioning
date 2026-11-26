@@ -93,6 +93,7 @@ class CheckpointSelectionTests(unittest.TestCase):
         model_names = {
             "fact_fusion": "FactRAGCaptioner",
             "fact_fusion_prefix": "FactFusionPrefixCaptioner",
+            "fact_fusion_prefix_segment": "FactFusionPrefixSegmentCaptioner",
             "fact_fusion_token_bias": "FactFusionTokenBiasCaptioner",
         }
         for pipeline in model_names:
@@ -116,7 +117,7 @@ class CheckpointSelectionTests(unittest.TestCase):
                 pd.DataFrame({"imgid": [7, 8], "cocoid": [101, 202],
                               "all_raws": [["A red dog.", "A dog on grass."], ["A tree."]]}).to_parquet(grouped_path)
                 vocab = vocabulary()
-                if pipeline in {"fact_fusion_prefix", "fact_fusion_token_bias"}:
+                if pipeline in {"fact_fusion_prefix", "fact_fusion_prefix_segment", "fact_fusion_token_bias"}:
                     vocab._add_token("<sep>")
                     vocab.special_tokens.append("<sep>")
                 vocab_path = vocab.save(root / "vocab.json")
@@ -126,7 +127,7 @@ class CheckpointSelectionTests(unittest.TestCase):
                     VISUAL_ENCODER_MODEL="test/clip", TEXT_RAG_CAPTION_SORT_BY="itm", TOP_K_CAPTIONS=1,
                     VOCAB_PATH=vocab_path,
                 )
-                if pipeline == "fact_fusion_prefix":
+                if pipeline in {"fact_fusion_prefix", "fact_fusion_prefix_segment"}:
                     common["MAX_FACT_PREFIX_LENGTH"] = 12
                 training = dict(common, NUM_EPOCHS=1, RUN_CHECKPOINT_DIR=root / "checkpoints",
                                 TRAIN_DF_PATH=split, TRAIN_I2T_PATH=context, TRAIN_VISUAL_FEATURES_PATH=features)
@@ -158,6 +159,11 @@ class CheckpointSelectionTests(unittest.TestCase):
                 self.assertNotIn("scheduler_state_dict", checkpoint)
                 self.assertNotIn("best_val_loss", checkpoint)
                 self.assertEqual(list(training["RUN_CHECKPOINT_DIR"].glob("last*")), [])
+                if pipeline == "fact_fusion_prefix_segment":
+                    self.assertEqual(checkpoint["model_config"]["segment_initialization"], "zeros")
+                    segments = checkpoint["model_state_dict"]["decoder.segment_embedding.weight"]
+                    self.assertEqual(tuple(segments.shape), (2, 16))
+                    self.assertTrue(segments.abs().sum(dim=1).gt(0).all())
                 if pipeline == "fact_fusion_token_bias":
                     self.assertEqual(checkpoint["model_config"]["model_kwargs"]["initial_alpha"], .3)
                     self.assertIn("decoder.raw_alpha", checkpoint["model_state_dict"])
